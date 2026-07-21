@@ -1,6 +1,7 @@
 // 整理房间大作战 —— 主逻辑
 import * as THREE from 'three';
 import { buildRoom, makeBox } from './room.js';
+import { CATALOG, beep } from './shop.js';
 
 // ---------- 渲染基础 ----------
 const app = document.getElementById('app');
@@ -65,6 +66,20 @@ const carryMount = new THREE.Group();
 carryMount.position.set(0, 1.85, 0);
 player.add(carryMount);
 
+// ---------- 金钱 / 存档 ----------
+const moneyEl = document.getElementById('money');
+let money = 3000;
+const placedItems = [];   // {id, x, z, ry}
+const updaters = new Set();
+function setMoney(v) {
+  money = Math.round(v);
+  moneyEl.textContent = `💰 §${money}`;
+  refreshShopAffordability();
+}
+function saveGame() {
+  localStorage.setItem('roomOrganizerSave', JSON.stringify({ money, items: placedItems }));
+}
+
 // ---------- 游戏状态 / 上下文 ----------
 const progressEl = document.getElementById('progress');
 const promptEl = document.getElementById('prompt');
@@ -91,6 +106,16 @@ const ctx = {
   },
   onProgress() {
     const done = room.tasks.filter(t => t.done).length;
+    const prev = this._done ?? 0;
+    if (done > prev) {
+      setMoney(money + 100 * (done - prev));
+      if (prev > 0 || done > 0) {
+        this.flashMessage(`✨ 整理奖励 +§${100 * (done - prev)}`);
+        beep(990, 0.1, 'sine', 0.05);
+      }
+      this._done = done;
+      saveGame();
+    }
     progressEl.textContent = `整理进度：${done} / ${room.tasks.length}`;
     if (done === room.tasks.length) winEl.style.display = 'block';
   },
@@ -107,6 +132,117 @@ const ctx = {
 const room = buildRoom(scene, ctx);
 ctx.onProgress();
 
+// ---------- 购买模式（模拟人生式）----------
+const shopEl = document.getElementById('shop');
+const shopItemsEl = document.getElementById('shop-items');
+const placeHintEl = document.getElementById('place-hint');
+let buyMode = false;
+let ghost = null; // {group, def, ry, valid}
+const raycaster = new THREE.Raycaster();
+const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const ghostMat = new THREE.MeshBasicMaterial({ color: 0x33ff66, transparent: true, opacity: 0.55, depthWrite: false });
+
+// 构建商店列表
+for (const def of CATALOG) {
+  const el = document.createElement('div');
+  el.className = 'shop-item';
+  el.dataset.id = def.id;
+  el.innerHTML = `<div class="icon">${def.icon}</div>
+    <div class="info"><div class="name">${def.name}</div><div class="desc">${def.desc}</div></div>
+    <div class="price">§${def.price}</div>`;
+  el.addEventListener('click', () => {
+    if (money < def.price) { ctx.flashMessage('💸 钱不够啦，先去整理房间赚钱吧！'); beep(180, 0.15); return; }
+    startPlacement(def);
+  });
+  shopItemsEl.appendChild(el);
+}
+function refreshShopAffordability() {
+  for (const el of shopItemsEl.children) {
+    const def = CATALOG.find(d => d.id === el.dataset.id);
+    el.classList.toggle('cant-afford', money < def.price);
+  }
+}
+document.getElementById('reset-save').addEventListener('click', () => {
+  if (confirm('确定清空存档（金钱和已购家具）并重开吗？')) {
+    localStorage.removeItem('roomOrganizerSave');
+    location.reload();
+  }
+});
+
+function startPlacement(def) {
+  cancelGhost();
+  const item = def.build(ctx);
+  item.group.traverse(o => { if (o.isMesh) { o.material = ghostMat; o.castShadow = false; } });
+  scene.add(item.group);
+  ghost = { group: item.group, def, collider: item.collider, ry: 0, valid: false };
+  placeHintEl.style.display = 'block';
+  beep(700, 0.05, 'sine', 0.03);
+}
+function cancelGhost() {
+  if (ghost) { scene.remove(ghost.group); ghost = null; }
+  placeHintEl.style.display = 'none';
+}
+function ghostColliderSize(ry, col) {
+  const rotated = Math.round(ry / (Math.PI / 2)) % 2 !== 0;
+  return rotated ? { w: col.d, d: col.w } : { w: col.w, d: col.d };
+}
+function placementValid(x, z, ry, col) {
+  const { W, D } = room.bounds;
+  const { w, d } = ghostColliderSize(ry, col);
+  if (x - w / 2 < -W / 2 + 0.15 || x + w / 2 > W / 2 - 0.15) return false;
+  if (z - d / 2 < -D / 2 + 0.15 || z + d / 2 > D / 2 - 0.15) return false;
+  for (const c of room.colliders)
+    if (x - w / 2 < c.maxX && x + w / 2 > c.minX && z - d / 2 < c.maxZ && z + d / 2 > c.minZ) return false;
+  return true;
+}
+function placeItem() {
+  if (!ghost || !ghost.valid) { beep(180, 0.12); return; }
+  const def = ghost.def;
+  if (money < def.price) { ctx.flashMessage('💸 钱不够啦！'); cancelGhost(); return; }
+  const x = ghost.group.position.x, z = ghost.group.position.z, ry = ghost.ry;
+  setMoney(money - def.price);
+  const item = def.build(ctx);
+  registerItem(item, x, z, ry);
+  placedItems.push({ id: def.id, x, z, ry });
+  saveGame();
+  ctx.flashMessage(`${def.icon} 购买了${def.name}！-§${def.price}`);
+  beep(880, 0.08, 'sine', 0.06); setTimeout(() => beep(1320, 0.12, 'sine', 0.05), 90);
+}
+function registerItem(item, x, z, ry) {
+  item.group.position.set(x, 0, z);
+  item.group.rotation.y = ry;
+  scene.add(item.group);
+  const { w, d } = ghostColliderSize(ry, item.collider);
+  room.colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  for (const it of item.interactables) room.interactables.push({ radius: 2.4, ...it });
+  if (item.updater) updaters.add(item.updater);
+}
+function toggleBuy() {
+  buyMode = !buyMode;
+  shopEl.style.display = buyMode ? 'block' : 'none';
+  if (buyMode) {
+    document.exitPointerLock();
+  } else {
+    cancelGhost();
+  }
+  lockTip.style.display = (!buyMode && !pointerLocked) ? 'block' : 'none';
+}
+function loadGame() {
+  try {
+    const s = JSON.parse(localStorage.getItem('roomOrganizerSave'));
+    if (!s) return;
+    setMoney(typeof s.money === 'number' ? s.money : 3000);
+    for (const rec of s.items ?? []) {
+      const def = CATALOG.find(d => d.id === rec.id);
+      if (!def) continue;
+      registerItem(def.build(ctx), rec.x, rec.z, rec.ry);
+      placedItems.push(rec);
+    }
+  } catch { /* 存档损坏则忽略 */ }
+}
+loadGame();
+setMoney(money);
+
 // ---------- 输入 ----------
 const keys = {};
 let camTheta = Math.PI;   // 相机水平角（初始在角色身后）
@@ -116,22 +252,47 @@ let pointerLocked = false;
 addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'Space') e.preventDefault();
-  if (e.code === 'KeyE') tryInteract();
+  if (e.code === 'KeyE' && !buyMode) tryInteract();
+  if (e.code === 'KeyB') toggleBuy();
+  if (e.code === 'KeyR' && ghost) ghost.ry = (ghost.ry + Math.PI / 2) % (Math.PI * 2);
+  if (e.code === 'Escape' && ghost) cancelGhost();
 });
 addEventListener('keyup', e => keys[e.code] = false);
 
 renderer.domElement.addEventListener('click', () => {
+  if (buyMode) { if (ghost) placeItem(); return; }
   renderer.domElement.requestPointerLock();
+});
+renderer.domElement.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  if (ghost) cancelGhost();
 });
 lockTip.addEventListener('click', () => renderer.domElement.requestPointerLock());
 document.addEventListener('pointerlockchange', () => {
   pointerLocked = document.pointerLockElement === renderer.domElement;
-  lockTip.style.display = pointerLocked ? 'none' : 'block';
+  lockTip.style.display = (!pointerLocked && !buyMode) ? 'block' : 'none';
 });
 addEventListener('mousemove', e => {
-  if (!pointerLocked) return;
-  camTheta -= e.movementX * 0.0025;
-  camPhi = THREE.MathUtils.clamp(camPhi + e.movementY * 0.002, -0.15, 1.25);
+  if (pointerLocked) {
+    camTheta -= e.movementX * 0.0025;
+    camPhi = THREE.MathUtils.clamp(camPhi + e.movementY * 0.002, -0.15, 1.25);
+  }
+  // 购买模式：幽灵家具跟随鼠标（0.25m 网格吸附）
+  if (ghost) {
+    const ndc = new THREE.Vector2(
+      (e.clientX / innerWidth) * 2 - 1,
+      -(e.clientY / innerHeight) * 2 + 1);
+    raycaster.setFromCamera(ndc, camera);
+    const hit = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(floorPlane, hit)) {
+      const x = Math.round(hit.x / 0.25) * 0.25;
+      const z = Math.round(hit.z / 0.25) * 0.25;
+      ghost.group.position.set(x, 0, z);
+      ghost.group.rotation.y = ghost.ry;
+      ghost.valid = placementValid(x, z, ghost.ry, ghost.collider);
+      ghostMat.color.setHex(ghost.valid ? 0x33ff66 : 0xff4444);
+    }
+  }
 });
 
 addEventListener('resize', () => {
@@ -227,10 +388,12 @@ function animate() {
   const run = keys['ShiftLeft'] || keys['ShiftRight'];
   const speed = run ? 7 : 3.5;
   let mx = 0, mz = 0;
-  if (keys['KeyW']) mz -= 1;
-  if (keys['KeyS']) mz += 1;
-  if (keys['KeyA']) mx -= 1;
-  if (keys['KeyD']) mx += 1;
+  if (!buyMode) {
+    if (keys['KeyW']) mz -= 1;
+    if (keys['KeyS']) mz += 1;
+    if (keys['KeyA']) mx -= 1;
+    if (keys['KeyD']) mx += 1;
+  }
   const moving = mx !== 0 || mz !== 0;
   if (moving) {
     const len = Math.hypot(mx, mz);
@@ -250,7 +413,7 @@ function animate() {
   collide(player.position);
 
   // 跳跃 / 重力
-  if (keys['Space'] && grounded) { vy = 6.5; grounded = false; }
+  if (keys['Space'] && grounded && !buyMode) { vy = 6.5; grounded = false; }
   vy -= 18 * dt;
   player.position.y += vy * dt;
   if (player.position.y <= 0) { player.position.y = 0; vy = 0; grounded = true; }
@@ -272,6 +435,9 @@ function animate() {
 
   // 携带物轻微浮动
   if (ctx.carrying) ctx.carrying.mesh.position.y = Math.sin(clock.elapsedTime * 3) * 0.03;
+
+  // 已购家具的动画（电脑代码雨 / 弹珠台游戏等）
+  for (const u of updaters) u(dt, clock.elapsedTime);
 
   // 第三人称相机
   const target = new THREE.Vector3(

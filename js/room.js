@@ -10,7 +10,7 @@ export function makeBox(w, h, d, color, opts = {}) {
   return mesh;
 }
 
-function makeCyl(rt, rb, h, color, seg = 20) {
+export function makeCyl(rt, rb, h, color, seg = 20) {
   const mesh = new THREE.Mesh(
     new THREE.CylinderGeometry(rt, rb, h, seg),
     new THREE.MeshStandardMaterial({ color, roughness: 0.8 })
