@@ -1710,3 +1710,468 @@ export const CATALOG = [
   F('hamster', '🐹', '仓鼠笼', 190, '宠物', '跑轮转个不停', gHamster({})),
   F('roundtank', '🐟', '圆形金鱼缸', 300, '宠物', '两条金鱼游啊游', gFishTank({ w: 0.5, d: 0.5, round: true })),
 ];
+
+// ============================================================
+//  大航海 · 维多利亚主题家具
+// ============================================================
+const BRASS = 0x9a7a2a, DARKWOOD = 0x4a3524, MIDWOOD = 0x6a4a2c;
+
+function gShipWheel(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    add(g, B(0.5, 0.06, 0.4, DARKWOOD), 0, 0.03, 0);
+    add(g, C(0.05, 0.06, 1.1, DARKWOOD), 0, 0.58, 0);
+    const wheel = new THREE.Group(); wheel.position.y = 1.2; g.add(wheel);
+    add(wheel, new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.035, 10, 24),
+      new THREE.MeshStandardMaterial({ color: 0x8a5f38, roughness: 0.6 })), 0, 0, 0);
+    for (let i = 0; i < 6; i++) {
+      const sp = add(wheel, C(0.02, 0.02, 0.95, 0x8a5f38, 8), 0, 0, 0);
+      sp.rotation.z = i * Math.PI / 3;
+    }
+    add(wheel, S(0.06, BRASS), 0, 0, 0.02);
+    wheel.traverse(m => { if (m.isMesh) m.castShadow = true; });
+    const st = { on: false };
+    return {
+      group: g, foot: { w: 0.8, d: 0.5 },
+      updater(dt) { if (st.on) wheel.rotation.z += dt * 1.5; },
+      interactables: [actToggle(g, [wheel.children[0]], '转动船舵', '停下船舵', on => {
+        st.on = on; beep(300, 0.15, 'sine', 0.05);
+        if (on) ctx.flashMessage('☸️ 左满舵！目标——新大陆！');
+      })],
+    };
+  };
+}
+function gAnchor(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    const iron = new THREE.MeshStandardMaterial({ color: 0x3a3a42, roughness: 0.5, metalness: 0.7 });
+    add(g, C(0.3, 0.35, 0.05, 0x5a4632), 0, 0.03, 0);
+    const shank = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.1, 10), iron);
+    shank.position.y = 0.6; shank.castShadow = true; g.add(shank);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.02, 8, 16), iron);
+    ring.position.y = 1.2; g.add(ring);
+    const cross = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.5, 8), iron);
+    cross.rotation.z = Math.PI / 2; cross.position.y = 1.0; g.add(cross);
+    for (const sx of [-1, 1]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 0.06), iron);
+      arm.position.set(sx * 0.18, 0.3, 0); arm.rotation.z = sx * 0.8; arm.castShadow = true; g.add(arm);
+      const fluke = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.15, 8), iron);
+      fluke.position.set(sx * 0.36, 0.42, 0); fluke.rotation.z = -sx * 0.6; g.add(fluke);
+    }
+    return { group: g, foot: { w: 0.8, d: 0.5 }, interactables: [actMsg(ctx, g, [shank], '摸摸铁锚', '⚓ 起锚！准备扬帆远航！', 280)] };
+  };
+}
+function gBarrel(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    const body = add(g, C(0.26, 0.22, 0.65, o.color ?? 0x8a5f38, 18), 0, 0.325, 0);
+    for (const y of [0.12, 0.53]) add(g, new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.015, 8, 20),
+      new THREE.MeshStandardMaterial({ color: 0x3a3a42, metalness: 0.6, roughness: 0.5 })), 0, y, 0).rotation.x = Math.PI / 2;
+    add(g, C(0.22, 0.22, 0.03, 0x6b4527, 18), 0, 0.66, 0);
+    return { group: g, foot: { w: 0.55, d: 0.55 }, interactables: [actMsg(ctx, g, [body], o.prompt, o.msg, o.pitch ?? 300)] };
+  };
+}
+function gTreasure(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    add(g, B(0.8, 0.4, 0.5, 0x5a3d24), 0, 0.2, 0);
+    add(g, B(0.84, 0.06, 0.54, BRASS), 0, 0.06, 0);
+    // 金币
+    const gold = new THREE.Group();
+    for (let i = 0; i < 10; i++)
+      add(gold, C(0.05, 0.05, 0.015, 0xffd54a, 12), (Math.random() - 0.5) * 0.5, 0.4 + (i % 3) * 0.02, (Math.random() - 0.5) * 0.3);
+    add(gold, S(0.05, 0xd94f6a), -0.15, 0.44, 0.1);
+    add(gold, S(0.05, 0x4fc3f7), 0.18, 0.44, -0.05);
+    gold.traverse(m => { if (m.isMesh) m.material.emissive = new THREE.Color(0x332200); });
+    g.add(gold);
+    // 盖子
+    const lidPivot = new THREE.Group();
+    lidPivot.position.set(0, 0.4, -0.25);
+    const lid = B(0.82, 0.2, 0.52, 0x5a3d24);
+    lid.position.set(0, 0.1, 0.25);
+    const strap = B(0.84, 0.06, 0.54, BRASS); strap.position.set(0, 0.16, 0.25);
+    lidPivot.add(lid, strap);
+    g.add(lidPivot);
+    const lock = add(g, B(0.1, 0.12, 0.04, BRASS), 0, 0.32, 0.26);
+    return {
+      group: g, foot: { w: 0.85, d: 0.55 },
+      interactables: [actToggle(g, [lid], '打开宝箱', '合上宝箱', on => {
+        lidPivot.rotation.x = on ? -1.8 : 0;
+        beep(on ? 523 : 262, 0.12, 'sine', 0.06);
+        if (on) { ctx.flashMessage('💰 哇——金灿灿的财宝！'); setTimeout(() => beep(784, 0.15, 'sine', 0.05), 120); }
+      })],
+    };
+  };
+}
+function gCaptainDesk(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    add(g, B(1.5, 0.07, 0.85, MIDWOOD), 0, 0.76, 0);
+    legs4(g, 1.5, 0.85, 0.76, 0.08, DARKWOOD);
+    // 桌面航海图
+    const { g: cg, tex } = canvasTex(256, 160);
+    cg.fillStyle = '#d8c090'; cg.fillRect(0, 0, 256, 160);
+    cg.strokeStyle = '#8a6a3a'; cg.lineWidth = 3; cg.strokeRect(6, 6, 244, 148);
+    cg.fillStyle = '#a8825a';
+    for (const [x, y, w, h] of [[30, 40, 50, 35], [120, 25, 60, 45], [90, 100, 45, 30], [190, 90, 35, 40]]) {
+      cg.beginPath(); cg.ellipse(x, y, w / 2, h / 2, 0.3, 0, 7); cg.fill();
+    }
+    cg.strokeStyle = '#b03a2e'; cg.lineWidth = 2; cg.setLineDash([6, 5]);
+    cg.beginPath(); cg.moveTo(40, 130); cg.quadraticCurveTo(120, 60, 205, 100); cg.stroke();
+    cg.setLineDash([]);
+    cg.strokeStyle = '#b03a2e'; cg.lineWidth = 4;
+    cg.beginPath(); cg.moveTo(198, 93); cg.lineTo(212, 107); cg.moveTo(212, 93); cg.lineTo(198, 107); cg.stroke();
+    tex.needsUpdate = true;
+    add(g, new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.55), new THREE.MeshBasicMaterial({ map: tex })), -0.15, 0.8, 0, 0, -Math.PI / 2);
+    // 罗盘与羽毛笔
+    add(g, C(0.06, 0.07, 0.03, BRASS, 14), 0.55, 0.82, -0.2);
+    add(g, B(0.02, 0.25, 0.05, 0xf0ead8), 0.45, 0.9, 0.25, 0, 0.5).rotation.z = 0.4;
+    return { group: g, foot: { w: 1.55, d: 0.9 }, interactables: [actMsg(ctx, g, [g.children[5]], '研究航海图', '🗺️ 沿着虚线航线……X 就是宝藏！', 500)] };
+  };
+}
+function gSextant(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    add(g, B(0.35, 0.7, 0.35, DARKWOOD), 0, 0.35, 0);
+    add(g, B(0.4, 0.04, 0.4, MIDWOOD), 0, 0.72, 0);
+    const arc = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.015, 8, 20, Math.PI / 2.2),
+      new THREE.MeshStandardMaterial({ color: BRASS, metalness: 0.7, roughness: 0.3 }));
+    arc.position.y = 0.92; arc.rotation.z = -0.3; g.add(arc);
+    add(g, B(0.02, 0.3, 0.02, BRASS), 0, 0.92, 0).rotation.z = 0.6;
+    add(g, S(0.03, BRASS), 0, 0.78, 0);
+    return { group: g, foot: { w: 0.4, d: 0.4 }, interactables: [actMsg(ctx, g, [arc], '观测星象', '📐 测定了纬度：北纬 31°14′！', 640)] };
+  };
+}
+function gCompass(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    add(g, C(0.14, 0.18, 0.05, DARKWOOD), 0, 0.45, 0);
+    add(g, B(0.3, 0.42, 0.3, MIDWOOD), 0, 0.21, 0);
+    add(g, C(0.13, 0.13, 0.06, BRASS, 20), 0, 0.52, 0);
+    const needle = add(g, B(0.2, 0.01, 0.025, 0xd94f4f), 0, 0.55, 0);
+    add(g, new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.04, 20),
+      new THREE.MeshStandardMaterial({ color: 0xa8d8e8, transparent: true, opacity: 0.4, roughness: 0.1 })), 0, 0.56, 0);
+    return {
+      group: g, foot: { w: 0.35, d: 0.35 },
+      updater(dt, t) { needle.rotation.y = Math.sin(t * 1.5) * 0.15 + Math.sin(t * 4) * 0.03; },
+      interactables: [actMsg(ctx, g, [needle], '查看罗盘', '🧭 指针稳稳指向北方，航线正确！', 560)],
+    };
+  };
+}
+function gLantern(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    add(g, C(0.16, 0.2, 0.05, DARKWOOD), 0, 0.03, 0);
+    add(g, C(0.025, 0.025, 1.6, DARKWOOD), 0, 0.82, 0);
+    add(g, B(0.35, 0.04, 0.04, DARKWOOD), 0.15, 1.62, 0);
+    // 悬挂油灯
+    const lampG = new THREE.Group(); lampG.position.set(0.3, 1.45, 0); g.add(lampG);
+    add(lampG, C(0.07, 0.09, 0.04, BRASS, 12), 0, 0.12, 0);
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0xffe0a0, transparent: true, opacity: 0.55, emissive: 0x000000 });
+    const glass = add(lampG, new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.075, 0.16, 12, 1, true), glassMat), 0, 0, 0);
+    add(lampG, C(0.08, 0.06, 0.04, BRASS, 12), 0, -0.1, 0);
+    const light = new THREE.PointLight(0xffb060, 0, 7);
+    add(lampG, light, 0, 0, 0);
+    const st = { on: false };
+    return {
+      group: g, foot: { w: 0.5, d: 0.4 },
+      updater(dt, t) { if (st.on) light.intensity = 10 + Math.sin(t * 12) * 2; },
+      interactables: [actToggle(g, [glass], '点燃油灯', '熄灭油灯', on => {
+        st.on = on;
+        light.intensity = on ? 10 : 0;
+        glassMat.emissive.setHex(on ? 0xffb060 : 0x000000);
+        glassMat.emissiveIntensity = on ? 0.8 : 0;
+        beep(on ? 620 : 310, 0.08, 'sine', 0.04);
+      })],
+    };
+  };
+}
+function gShipBottle(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    add(g, B(0.5, 0.4, 0.3, MIDWOOD), 0, 0.2, 0);
+    add(g, B(0.55, 0.04, 0.35, DARKWOOD), 0, 0.42, 0);
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0xa8d8c8, transparent: true, opacity: 0.35, roughness: 0.1 });
+    const bottle = add(g, new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.35, 14), glassMat), 0, 0.55, 0);
+    bottle.rotation.z = Math.PI / 2;
+    add(g, C(0.035, 0.05, 0.08, glassMat.color.getHex(), 10), 0.2, 0.55, 0).rotation.z = Math.PI / 2;
+    // 瓶中船
+    add(g, B(0.14, 0.03, 0.04, 0x6b4527), 0, 0.53, 0);
+    add(g, B(0.01, 0.12, 0.01, 0x8a5f38), -0.03, 0.6, 0);
+    add(g, B(0.01, 0.1, 0.01, 0x8a5f38), 0.04, 0.59, 0);
+    add(g, B(0.06, 0.07, 0.005, 0xf0ead8), -0.03, 0.62, 0);
+    add(g, B(0.05, 0.06, 0.005, 0xf0ead8), 0.04, 0.61, 0);
+    return { group: g, foot: { w: 0.55, d: 0.35 }, interactables: [actMsg(ctx, g, [bottle], '欣赏瓶中船', '⛵ 好精巧的工艺！这艘船是怎么放进去的？', 620)] };
+  };
+}
+function gPorthole(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    add(g, B(0.7, 1.5, 0.08, DARKWOOD), 0, 0.75, -0.04);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.045, 10, 22),
+      new THREE.MeshStandardMaterial({ color: BRASS, metalness: 0.75, roughness: 0.3 }));
+    ring.position.set(0, 0.9, 0.01); ring.castShadow = true; g.add(ring);
+    const { g: cg, tex } = canvasTex(96, 96);
+    cg.fillStyle = '#7ab8d8'; cg.fillRect(0, 0, 96, 96);
+    cg.fillStyle = '#4a8ab8'; cg.fillRect(0, 55, 96, 41);
+    cg.fillStyle = '#fff';
+    cg.beginPath(); cg.ellipse(30, 25, 12, 6, 0, 0, 7); cg.fill();
+    cg.beginPath(); cg.ellipse(65, 18, 9, 5, 0, 0, 7); cg.fill();
+    tex.needsUpdate = true;
+    add(g, new THREE.Mesh(new THREE.CircleGeometry(0.27, 22), new THREE.MeshBasicMaterial({ map: tex })), 0, 0.9, 0.005);
+    add(g, B(0.5, 0.05, 0.25, DARKWOOD), 0, 0.03, 0.05);
+    return { group: g, foot: { w: 0.75, d: 0.3 }, interactables: [actMsg(ctx, g, [ring], '眺望舷窗', '🌊 碧海蓝天……远处好像有一座岛！', 540)] };
+  };
+}
+function gMapFrame(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    add(g, B(0.08, 1.2, 0.08, DARKWOOD), 0, 0.6, 0);
+    add(g, B(0.45, 0.05, 0.3, DARKWOOD), 0, 0.03, 0);
+    const { g: cg, tex } = canvasTex(192, 128);
+    cg.fillStyle = '#d8c090'; cg.fillRect(0, 0, 192, 128);
+    cg.strokeStyle = '#8a6a3a'; cg.lineWidth = 4; cg.strokeRect(4, 4, 184, 120);
+    cg.fillStyle = '#a8825a';
+    for (const [x, y, rx, ry] of [[50, 50, 22, 16], [130, 40, 28, 20], [110, 90, 20, 14], [160, 95, 14, 18]]) {
+      cg.beginPath(); cg.ellipse(x, y, rx, ry, 0.4, 0, 7); cg.fill();
+    }
+    cg.strokeStyle = '#b03a2e'; cg.lineWidth = 2; cg.setLineDash([5, 4]);
+    cg.beginPath(); cg.moveTo(35, 100); cg.quadraticCurveTo(90, 40, 155, 88); cg.stroke();
+    cg.setLineDash([]); cg.lineWidth = 4;
+    cg.beginPath(); cg.moveTo(149, 82); cg.lineTo(161, 94); cg.moveTo(161, 82); cg.lineTo(149, 94); cg.stroke();
+    tex.needsUpdate = true;
+    add(g, B(1.0, 0.7, 0.04, 0x8a6a4a), 0, 1.5, 0);
+    const art = add(g, new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.62), new THREE.MeshBasicMaterial({ map: tex })), 0, 1.5, 0.025);
+    return { group: g, foot: { w: 1.0, d: 0.3 }, interactables: [actMsg(ctx, g, [art], '研究藏宝图', '🗺️ X 标记的地方……一定有宝藏！', 500)] };
+  };
+}
+function gCandelabra(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    add(g, C(0.16, 0.22, 0.05, BRASS), 0, 0.03, 0);
+    add(g, C(0.025, 0.035, 1.4, BRASS), 0, 0.75, 0);
+    const flames = [];
+    for (const [x, z] of [[0, 0], [0.16, 0], [-0.16, 0]]) {
+      if (x) add(g, B(Math.abs(x), 0.03, 0.03, BRASS), x / 2, 1.35, z);
+      add(g, C(0.022, 0.022, 0.16, 0xf0ead8), x, 1.46, z);
+      const f = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.07, 8),
+        new THREE.MeshStandardMaterial({ color: 0xffaa33, emissive: 0xff8800, emissiveIntensity: 2 }));
+      f.position.set(x, 1.59, z); f.visible = false; g.add(f); flames.push(f);
+    }
+    const light = new THREE.PointLight(0xffb060, 0, 7);
+    add(g, light, 0, 1.55, 0);
+    const st = { on: false };
+    return {
+      group: g, foot: { w: 0.45, d: 0.45 },
+      updater(dt, t) {
+        if (!st.on) return;
+        light.intensity = 11 + Math.sin(t * 13) * 2;
+        flames.forEach((f, i) => f.scale.y = 1 + Math.sin(t * 10 + i * 2.1) * 0.3);
+      },
+      interactables: [actToggle(g, [g.children[1]], '点燃蜡烛', '吹灭蜡烛', on => {
+        st.on = on; light.intensity = on ? 11 : 0;
+        for (const f of flames) f.visible = on;
+        beep(on ? 620 : 310, 0.08, 'sine', 0.04);
+      })],
+    };
+  };
+}
+function gFireplace(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    const stone = 0x6a6560, stoneD = 0x55504c;
+    add(g, B(1.7, 1.35, 0.3, stone), 0, 0.675, -0.15);
+    add(g, B(0.3, 1.2, 0.4, stoneD), 0.68, 0.6, 0.05);
+    add(g, B(0.3, 1.2, 0.4, stoneD), -0.68, 0.6, 0.05);
+    add(g, B(1.75, 0.14, 0.5, DARKWOOD), 0, 1.28, 0.02);
+    add(g, B(1.05, 1.0, 0.3, 0x14100c), 0, 0.5, 0);
+    add(g, C(0.06, 0.06, 0.7, 0x4a3020, 10), 0, 0.12, 0.08).rotation.x = Math.PI / 2;
+    const flameMat = new THREE.MeshStandardMaterial({ color: 0xff7716, emissive: 0xff5500, emissiveIntensity: 1.6, transparent: true, opacity: 0.95 });
+    const flames = [];
+    for (const [x, s] of [[-0.15, 0.8], [0, 1.1], [0.15, 0.9]]) {
+      const f = new THREE.Mesh(new THREE.ConeGeometry(0.09 * s, 0.4 * s, 8), flameMat);
+      f.position.set(x, 0.35, 0.08); f.visible = false; g.add(f); flames.push(f);
+    }
+    const light = new THREE.PointLight(0xff7733, 0, 7);
+    add(g, light, 0, 0.6, 0.4);
+    const st = { on: false };
+    return {
+      group: g, foot: { w: 1.8, d: 0.6 },
+      updater(dt, t) {
+        if (!st.on) return;
+        light.intensity = 12 + Math.sin(t * 11) * 3 + Math.sin(t * 23) * 2;
+        flames.forEach((f, i) => f.scale.y = 1 + Math.sin(t * 9 + i * 2) * 0.25);
+      },
+      interactables: [actToggle(g, [g.children[0]], '生起炉火', '熄灭火炉', on => {
+        st.on = on; light.intensity = on ? 12 : 0;
+        for (const f of flames) f.visible = on;
+        beep(on ? 200 : 150, 0.15, 'sawtooth', 0.05);
+        if (on) ctx.flashMessage('🔥 炉火噼啪作响，房间暖起来了！');
+      })],
+    };
+  };
+}
+function gGramophone(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    add(g, B(0.5, 0.5, 0.45, DARKWOOD), 0, 0.25, 0);
+    add(g, C(0.16, 0.16, 0.03, 0x1a1a1a, 20), 0, 0.52, 0);
+    add(g, C(0.03, 0.03, 0.06, BRASS, 8), 0, 0.55, 0);
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.5, 18, 1, true),
+      new THREE.MeshStandardMaterial({ color: BRASS, metalness: 0.7, roughness: 0.3, side: THREE.DoubleSide }));
+    horn.position.set(0.15, 0.85, -0.1); horn.rotation.z = -0.9; horn.rotation.x = -0.4; horn.castShadow = true;
+    g.add(horn);
+    const disc = g.children[1];
+    return {
+      group: g, foot: { w: 0.6, d: 0.5 },
+      updater(dt) { disc.rotation.y += dt * 2; },
+      interactables: [musicAct(g, [horn], [523, 659, 784, 523, 587, 698, 880, 587, 523, 659, 784, 1046], 'sine', 300, '放上唱片 📀')],
+    };
+  };
+}
+function gHammock(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    for (const sx of [-1, 1]) {
+      add(g, C(0.04, 0.05, 1.2, DARKWOOD), sx * 1.0, 0.6, 0);
+      add(g, B(0.3, 0.05, 0.3, DARKWOOD), sx * 1.0, 0.03, 0);
+    }
+    const clothMat = new THREE.MeshStandardMaterial({ color: o.color ?? 0xd8c8a0, roughness: 1, side: THREE.DoubleSide });
+    for (let i = 0; i < 5; i++) {
+      const seg = add(g, B(0.42, 0.02, 0.65, 0), 0, 0, 0);
+      seg.material = clothMat;
+      const t = i / 4, x = -0.8 + t * 1.6;
+      seg.position.set(x, 0.55 + Math.pow(Math.abs(t - 0.5) * 2, 2) * 0.35, 0);
+      seg.rotation.z = (t - 0.5) * -1.2;
+      seg.castShadow = true;
+    }
+    return { group: g, foot: { w: 2.1, d: 0.7 }, interactables: [actMsg(ctx, g, [g.children[4]], '躺进吊床', '⛵ 晃啊晃……想起在海上的日子', 420)] };
+  };
+}
+function gFourPoster(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    add(g, B(1.6, 0.3, 2.1, DARKWOOD), 0, 0.18, 0);
+    add(g, B(1.5, 0.16, 2.0, 0xf0ead8), 0, 0.4, 0);
+    add(g, B(1.46, 0.07, 1.3, o.blanket ?? 0x6a2e3a), 0, 0.5, 0.3);
+    add(g, B(0.5, 0.1, 0.3, 0xfff8ee), -0.35, 0.52, -0.75);
+    add(g, B(0.5, 0.1, 0.3, 0xfff8ee), 0.35, 0.52, -0.75);
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      add(g, C(0.05, 0.06, 1.9, DARKWOOD), sx * 0.75, 0.95, sz * 1.0);
+      add(g, S(0.06, BRASS), sx * 0.75, 1.93, sz * 1.0);
+    }
+    add(g, B(1.6, 0.06, 2.1, o.canopy ?? 0x8a2e3a), 0, 1.9, 0);
+    for (const sx of [-1, 1]) {
+      const curtain = add(g, B(0.06, 1.5, 0.5, o.canopy ?? 0x8a2e3a), sx * 0.75, 1.1, -0.8);
+      curtain.material.transparent = true; curtain.material.opacity = 0.85;
+    }
+    return { group: g, foot: { w: 1.7, d: 2.2 }, interactables: [actMsg(ctx, g, [g.children[1]], '躺下休息', '👑 像贵族一样入眠……', 380)] };
+  };
+}
+function gWingback(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    const c = o.color ?? 0x6a2e3a;
+    add(g, B(0.6, 0.35, 0.6, c), 0, 0.3, 0);
+    add(g, B(0.6, 0.75, 0.15, c), 0, 0.85, -0.24);
+    for (const sx of [-1, 1]) {
+      const wing = add(g, B(0.12, 0.6, 0.3, c), sx * 0.26, 0.8, -0.12);
+      wing.rotation.y = -sx * 0.25;
+      add(g, B(0.12, 0.25, 0.55, c), sx * 0.26, 0.55, 0.02);
+      add(g, C(0.03, 0.04, 0.15, DARKWOOD), sx * 0.24, 0.075, 0.24);
+      add(g, C(0.03, 0.04, 0.15, DARKWOOD), sx * 0.24, 0.075, -0.2);
+    }
+    add(g, B(0.5, 0.1, 0.45, o.cushion ?? 0x8a4a5a), 0, 0.5, 0.03);
+    return { group: g, foot: { w: 0.7, d: 0.7 }, interactables: [actMsg(ctx, g, [g.children[0]], '坐进扶手椅', '🛋️ 包裹感十足的贵族座椅！', 460)] };
+  };
+}
+function gTeaSet(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    add(g, C(0.45, 0.45, 0.04, MIDWOOD, 24), 0, 0.72, 0);
+    add(g, C(0.05, 0.07, 0.7, DARKWOOD), 0, 0.36, 0);
+    add(g, C(0.25, 0.3, 0.04, DARKWOOD, 20), 0, 0.02, 0);
+    // 茶壶
+    const pot = add(g, S(0.1, 0xe8e0d0, 16), -0.12, 0.82, 0);
+    add(g, C(0.02, 0.035, 0.09, 0xe8e0d0, 8), -0.22, 0.85, 0).rotation.z = 0.8;
+    add(g, S(0.025, 0xd8a0a8, 8), -0.12, 0.93, 0);
+    for (const [x, z] of [[0.12, 0.12], [0.15, -0.1], [-0.02, 0.2]]) {
+      add(g, C(0.035, 0.028, 0.05, 0xffffff, 10), x, 0.765, z);
+      add(g, C(0.055, 0.055, 0.012, 0xe8e0d0, 12), x, 0.745, z);
+    }
+    return { group: g, foot: { w: 0.7, d: 0.7 }, interactables: [actMsg(ctx, g, [pot], '享用下午茶', '🫖 倒了一杯伯爵红茶，配上司康饼～', 580)] };
+  };
+}
+function gTypewriter(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    add(g, B(1.0, 0.06, 0.6, MIDWOOD), 0, 0.74, 0);
+    legs4(g, 1.0, 0.6, 0.74, 0.06, DARKWOOD);
+    const body = add(g, B(0.4, 0.15, 0.3, 0x2a2a30), 0, 0.85, -0.05);
+    add(g, C(0.035, 0.035, 0.38, 0x1a1a1a, 10), 0, 0.95, -0.15).rotation.z = Math.PI / 2;
+    add(g, B(0.3, 0.12, 0.01, 0xf8f4e8), 0, 1.0, -0.16, 0, -0.3);
+    for (let r = 0; r < 3; r++)
+      for (let k = 0; k < 8; k++)
+        add(g, C(0.015, 0.015, 0.015, 0xe8e8e8, 6), -0.14 + k * 0.04, 0.87 + r * 0.025, 0.03 + r * 0.035);
+    return {
+      group: g, foot: { w: 1.05, d: 0.65 },
+      interactables: [{
+        pos: g.position, meshes: [body],
+        getPrompt: () => '按 <b>E</b> 写航海日志',
+        action: () => {
+          ctx.flashMessage('⌨️ 嗒嗒嗒……"今日，发现了新大陆。"');
+          beep(800, 0.03, 'square', 0.04); setTimeout(() => beep(750, 0.03, 'square', 0.04), 90);
+          setTimeout(() => beep(820, 0.03, 'square', 0.04), 180); setTimeout(() => beep(700, 0.06, 'square', 0.04), 300);
+        },
+      }],
+    };
+  };
+}
+
+// ============================================================
+//  主题目录
+// ============================================================
+const V_REUSE = [
+  'chair_wood', 'chair_rocking', 'table_dining', 'table_side', 'bed_single',
+  'wardrobe_2', 'wardrobe_3', 'drawer_chest', 'nightstand', 'cabinet_dining', 'cabinet_display',
+  'sideboard', 'minishelf', 'bookshelf_big', 'shelf_ladder',
+  'plant_pothos', 'plant_sakura', 'plant_rose',
+  'bathtub', 'vanity',
+  'piano_grand', 'piano_upright', 'guitar', 'violin',
+  'mirror', 'easel', 'art_stand2', 'grand_clock', 'vase', 'vase_flower', 'sculpture',
+  'globe', 'telescope', 'birdcage',
+  'rug_circle', 'rug_persian', 'umbrella_stand', 'suitcase', 'toybox', 'basket',
+];
+
+export const VICTORIAN_CATALOG = [
+  // ===== 航海 =====
+  F('ship_wheel', '☸️', '船舵装饰', 420, '航海', '转动船舵，目标新大陆', gShipWheel({})),
+  F('anchor', '⚓', '大铁锚', 380, '航海', '起锚！准备远航', gAnchor({})),
+  F('barrel_rum', '🛢️', '朗姆酒桶', 160, '航海', '海盗的最爱', gBarrel({ color: 0x8a5f38, prompt: '闻一闻酒桶', msg: '🍺 嗯——是上等朗姆酒的香气！' })),
+  F('barrel_powder', '🧨', '火药桶', 180, '航海', '小心轻放！', gBarrel({ color: 0x3a3a42, prompt: '检查火药桶', msg: '🧨 干燥密封，完好无损……千万别靠近火源！', pitch: 200 })),
+  F('barrel_water', '🛢️', '淡水桶', 120, '航海', '远航必备补给', gBarrel({ color: 0x6a7a8a, prompt: '喝点淡水', msg: '💧 咕咚咕咚，清甜的淡水！', pitch: 500 })),
+  F('treasure', '💰', '海盗宝箱', 880, '航海', '打开看看里面的财宝', gTreasure({})),
+  F('captain_desk', '🗺️', '船长航海桌', 720, '航海', '桌面铺着真正的航海图', gCaptainDesk({})),
+  F('sextant', '📐', '六分仪', 340, '航海', '观测星象测定纬度', gSextant({})),
+  F('compass', '🧭', '航海罗盘', 260, '航海', '指针永远指向北方', gCompass({})),
+  F('lantern', '🏮', '船用油灯', 180, '航海', '火光摇曳，照亮夜航', gLantern({})),
+  F('ship_bottle', '⛵', '瓶中船', 460, '航海', '精巧的手工瓶中船', gShipBottle({})),
+  F('porthole', '🪟', '舷窗装饰', 300, '航海', '透过舷窗看海', gPorthole({})),
+  F('map_frame', '🗺️', '航海藏宝图', 280, '航海', 'X 标记着宝藏的位置', gMapFrame({})),
+  // ===== 维多利亚 =====
+  F('candelabra', '🕯️', '银烛台', 240, '维多利亚', '三支蜡烛，火光摇曳', gCandelabra({})),
+  F('fireplace', '🔥', '石砌壁炉', 980, '维多利亚', '生起炉火，温暖整个房间', gFireplace({})),
+  F('gramophone', '📻', '留声机', 620, '维多利亚', '黄铜喇叭播放华尔兹', gGramophone({})),
+  F('hammock', '⛵', '水手吊床', 340, '维多利亚', '晃啊晃，梦回大海', gHammock({})),
+  F('four_poster', '🛏️', '四柱床', 1200, '维多利亚', '带帷幔的贵族床', gFourPoster({})),
+  F('wingback', '🪑', '翼背扶手椅', 560, '维多利亚', '包裹感十足的绅士座椅', gWingback({})),
+  F('chesterfield', '🛋️', '切斯特菲尔德沙发', 1100, '维多利亚', '经典英式皮沙发', gSofa({ seats: 2, color: 0x5a3a28, cushion: 0x6b4530 })),
+  F('tea_set', '🫖', '下午茶桌', 380, '维多利亚', '伯爵红茶配司康饼', gTeaSet({})),
+  F('typewriter', '⌨️', '打字机桌', 440, '维多利亚', '嗒嗒嗒，写下航海日志', gTypewriter({})),
+  // ===== 经典沿用 =====
+  ...V_REUSE.map(id => CATALOG.find(d => d.id === id)),
+];
+
+export function getCatalog(theme) {
+  return theme === 'victorian' ? VICTORIAN_CATALOG : CATALOG;
+}

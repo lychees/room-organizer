@@ -89,6 +89,25 @@
     font-size: 15px; background: rgba(30,80,40,.85); padding: 8px 24px; border-radius: 8px;
     border: 1px solid rgba(255,255,255,.4); display: none; white-space: nowrap;
   }
+  /* 开局模式选择 */
+  #mode-select {
+    position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; color: #fff;
+    background: radial-gradient(ellipse at center, #2b3a55 0%, #12121f 100%);
+  }
+  #mode-select h1 { font-size: 40px; letter-spacing: 4px; text-shadow: 0 4px 20px rgba(0,0,0,.6); }
+  #mode-select p { margin: 14px 0 30px; opacity: .8; font-size: 16px; }
+  .modes { display: flex; gap: 28px; }
+  .mode-card {
+    width: 260px; padding: 28px 20px; border-radius: 16px; cursor: pointer;
+    background: rgba(255,255,255,.07); border: 2px solid rgba(255,255,255,.25);
+    color: #fff; font-family: inherit; display: flex; flex-direction: column; align-items: center; gap: 10px;
+    transition: all .2s;
+  }
+  .mode-card:hover { transform: translateY(-6px); background: rgba(120,120,220,.25); border-color: #ffd54a; }
+  .mode-card .emoji { font-size: 56px; }
+  .mode-card b { font-size: 20px; }
+  .mode-card span { font-size: 13px; opacity: .75; line-height: 1.6; text-align: center; }
 </style>
 </head>
 <body>
@@ -107,6 +126,21 @@
 </div>
 <div class="hud" id="win">🎉 房间整理完毕！<small>你把所有东西都归置好了，真棒！</small></div>
 <div class="hud" id="lock-tip">🖱️ 点击画面开始游戏</div>
+
+<div id="mode-select">
+  <h1>🏠 整理房间大作战</h1>
+  <p>选择你的时代风格，开始整理属于你的房间</p>
+  <div class="modes">
+    <button class="mode-card" id="mode-modern">
+      <div class="emoji">🏙️</div><b>现代公寓</b>
+      <span>131 件现代家具：电脑、弹珠台、街机、冰箱、跑步机……</span>
+    </button>
+    <button class="mode-card" id="mode-victorian">
+      <div class="emoji">⚓</div><b>大航海 · 维多利亚</b>
+      <span>60+ 件复古家具：船舵、海盗宝箱、石砌壁炉、留声机、油灯、航海图……</span>
+    </button>
+  </div>
+</div>
 <div class="hud" id="place-hint">🖱️ 左键放置 · <b>R</b> 旋转 · 右键 / Esc 取消 · <b>B</b> 退出商店</div>
 
 <div id="shop">

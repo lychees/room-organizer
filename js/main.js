@@ -1,7 +1,13 @@
 // 整理房间大作战 —— 主逻辑
 import * as THREE from 'three';
 import { buildRoom, makeBox } from './room.js';
-import { CATALOG, beep } from './shop.js';
+import { getCatalog, beep } from './shop.js';
+
+function init(theme) {
+const CATALOG = getCatalog(theme);
+const SAVE_KEY = `roomOrganizerSave_${theme}`;
+document.getElementById('title').textContent =
+  theme === 'victorian' ? '⚓ 大航海 · 维多利亚房间' : '🏠 整理房间大作战';
 
 // ---------- 渲染基础 ----------
 const app = document.getElementById('app');
@@ -27,7 +33,7 @@ sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.camera.left = -12; sun.shadow.camera.right = 12;
 sun.shadow.camera.top = 12; sun.shadow.camera.bottom = -12;
 scene.add(sun);
-const fill = new THREE.PointLight(0xaaccff, 8, 25);
+const fill = new THREE.PointLight(theme === 'victorian' ? 0xffc088 : 0xaaccff, 8, 25);
 fill.position.set(0, 3.4, 0);
 scene.add(fill);
 
@@ -35,7 +41,9 @@ scene.add(fill);
 const player = new THREE.Group();
 const parts = {};
 {
-  const skin = 0xf2c89a, shirt = 0x4f7ad9, pants = 0x3d4a5c;
+  const skin = 0xf2c89a;
+  const shirt = theme === 'victorian' ? 0x4a2e2e : 0x4f7ad9;
+  const pants = theme === 'victorian' ? 0x2e2a26 : 0x3d4a5c;
   const torso = makeBox(0.42, 0.55, 0.24, shirt); torso.position.y = 0.95; player.add(torso);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 20, 16),
     new THREE.MeshStandardMaterial({ color: skin, roughness: 0.7 }));
@@ -58,6 +66,17 @@ const parts = {};
   parts.legL = mkLimb(0.13, 0.62, 0.13, pants, -0.12, 0.68);
   parts.legR = mkLimb(0.13, 0.62, 0.13, pants, 0.12, 0.68);
 }
+// 维多利亚：船长礼服帽
+if (theme === 'victorian') {
+  const hatMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 });
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.03, 20), hatMat);
+  brim.position.y = 1.56; brim.castShadow = true; player.add(brim);
+  const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.24, 20), hatMat);
+  crown.position.y = 1.69; crown.castShadow = true; player.add(crown);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.175, 0.18, 0.05, 20),
+    new THREE.MeshStandardMaterial({ color: 0x8a2e2e, roughness: 0.8 }));
+  band.position.y = 1.6; player.add(band);
+}
 player.position.set(0, 0, 2);
 scene.add(player);
 
@@ -77,7 +96,7 @@ function setMoney(v) {
   refreshShopAffordability();
 }
 function saveGame() {
-  localStorage.setItem('roomOrganizerSave', JSON.stringify({ money, items: placedItems }));
+  localStorage.setItem(SAVE_KEY, JSON.stringify({ money, items: placedItems }));
 }
 
 // ---------- 游戏状态 / 上下文 ----------
@@ -129,7 +148,8 @@ const ctx = {
   },
 };
 
-const room = buildRoom(scene, ctx);
+const room = buildRoom(scene, ctx, theme);
+for (const u of room.updaters ?? []) updaters.add(u);
 ctx.onProgress();
 
 // ---------- 购买模式（模拟人生式）----------
@@ -184,7 +204,7 @@ function refreshShopAffordability() {
 }
 document.getElementById('reset-save').addEventListener('click', () => {
   if (confirm('确定清空存档（金钱和已购家具）并重开吗？')) {
-    localStorage.removeItem('roomOrganizerSave');
+    localStorage.removeItem(SAVE_KEY);
     location.reload();
   }
 });
@@ -252,7 +272,7 @@ function toggleBuy() {
 }
 function loadGame() {
   try {
-    const s = JSON.parse(localStorage.getItem('roomOrganizerSave'));
+    const s = JSON.parse(localStorage.getItem(SAVE_KEY));
     if (!s) return;
     setMoney(typeof s.money === 'number' ? s.money : 3000);
     for (const rec of s.items ?? []) {
@@ -471,3 +491,12 @@ animate();
 
 // 调试/测试钩子
 window.__game = { player, room, catalog: CATALOG, camera };
+} // end init()
+
+// ---------- 开局模式选择 ----------
+for (const [id, theme] of [['mode-modern', 'modern'], ['mode-victorian', 'victorian']]) {
+  document.getElementById(id).addEventListener('click', () => {
+    document.getElementById('mode-select').style.display = 'none';
+    init(theme);
+  });
+}
