@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>整理房间大作战 · Room Organizer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a2e; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+  #app { width: 100%; height: 100%; }
+  .hud { position: fixed; color: #fff; user-select: none; pointer-events: none; z-index: 10; }
+
+  #title {
+    top: 16px; left: 50%; transform: translateX(-50%);
+    font-size: 22px; font-weight: bold; letter-spacing: 2px;
+    text-shadow: 0 2px 8px rgba(0,0,0,.6);
+  }
+  #progress {
+    top: 52px; left: 50%; transform: translateX(-50%);
+    font-size: 15px; background: rgba(0,0,0,.45); padding: 6px 18px; border-radius: 20px;
+  }
+  #prompt {
+    bottom: 22%; left: 50%; transform: translateX(-50%);
+    font-size: 17px; background: rgba(0,0,0,.55); padding: 8px 22px; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.35); display: none; white-space: nowrap;
+  }
+  #prompt b { color: #ffd54a; }
+  #carry {
+    top: 90px; left: 50%; transform: translateX(-50%);
+    font-size: 14px; color: #ffd54a; display: none; text-shadow: 0 1px 4px rgba(0,0,0,.8);
+  }
+  #help {
+    left: 16px; bottom: 16px; font-size: 13px; line-height: 1.9;
+    background: rgba(0,0,0,.45); padding: 10px 16px; border-radius: 10px;
+  }
+  #help b { color: #8fd3ff; }
+  #win {
+    top: 50%; left: 50%; transform: translate(-50%,-50%);
+    font-size: 42px; font-weight: bold; color: #ffd54a;
+    text-shadow: 0 4px 20px rgba(0,0,0,.8); display: none; text-align: center;
+  }
+  #win small { display: block; font-size: 16px; color: #fff; margin-top: 12px; font-weight: normal; }
+  #lock-tip {
+    top: 50%; left: 50%; transform: translate(-50%,-50%);
+    font-size: 20px; background: rgba(0,0,0,.6); padding: 18px 36px; border-radius: 12px;
+    border: 1px solid rgba(255,255,255,.3); pointer-events: auto; cursor: pointer;
+  }
+  #lock-tip:hover { background: rgba(60,60,120,.7); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div class="hud" id="title">🏠 整理房间大作战</div>
+<div class="hud" id="progress">整理进度：0 / 15</div>
+<div class="hud" id="carry"></div>
+<div class="hud" id="prompt"></div>
+<div class="hud" id="help">
+  <b>WASD</b> 移动　<b>鼠标</b> 视角<br>
+  <b>空格</b> 跳跃　<b>Shift</b> 加速跑<br>
+  <b>E</b> 交互（拾取 / 放置 / 开关）
+</div>
+<div class="hud" id="win">🎉 房间整理完毕！<small>你把所有东西都归置好了，真棒！</small></div>
+<div class="hud" id="lock-tip">🖱️ 点击画面开始游戏</div>
+
+<script type="importmap">
+{ "imports": { "three": "./lib/three.module.js" } }
+</script>
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>
