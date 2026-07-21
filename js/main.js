@@ -142,20 +142,40 @@ const raycaster = new THREE.Raycaster();
 const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const ghostMat = new THREE.MeshBasicMaterial({ color: 0x33ff66, transparent: true, opacity: 0.55, depthWrite: false });
 
-// 构建商店列表
-for (const def of CATALOG) {
-  const el = document.createElement('div');
-  el.className = 'shop-item';
-  el.dataset.id = def.id;
-  el.innerHTML = `<div class="icon">${def.icon}</div>
-    <div class="info"><div class="name">${def.name}</div><div class="desc">${def.desc}</div></div>
-    <div class="price">§${def.price}</div>`;
-  el.addEventListener('click', () => {
-    if (money < def.price) { ctx.flashMessage('💸 钱不够啦，先去整理房间赚钱吧！'); beep(180, 0.15); return; }
-    startPlacement(def);
+// 构建商店列表（带分类筛选）
+const chipsEl = document.getElementById('shop-chips');
+document.querySelector('#shop h3').textContent = `🛒 家具商店（${CATALOG.length} 件）`;
+let shopFilter = '全部';
+const categories = ['全部', ...new Set(CATALOG.map(d => d.cat))];
+for (const cat of categories) {
+  const chip = document.createElement('button');
+  chip.className = 'chip' + (cat === '全部' ? ' active' : '');
+  chip.textContent = cat;
+  chip.addEventListener('click', () => {
+    shopFilter = cat;
+    for (const c of chipsEl.children) c.classList.toggle('active', c.textContent === cat);
+    renderShopItems();
   });
-  shopItemsEl.appendChild(el);
+  chipsEl.appendChild(chip);
 }
+function renderShopItems() {
+  shopItemsEl.innerHTML = '';
+  for (const def of CATALOG.filter(d => shopFilter === '全部' || d.cat === shopFilter)) {
+    const el = document.createElement('div');
+    el.className = 'shop-item';
+    el.dataset.id = def.id;
+    el.innerHTML = `<div class="icon">${def.icon}</div>
+      <div class="info"><div class="name">${def.name}</div><div class="desc">${def.desc}</div></div>
+      <div class="price">§${def.price}</div>`;
+    el.addEventListener('click', () => {
+      if (money < def.price) { ctx.flashMessage('💸 钱不够啦，先去整理房间赚钱吧！'); beep(180, 0.15); return; }
+      startPlacement(def);
+    });
+    shopItemsEl.appendChild(el);
+  }
+  refreshShopAffordability();
+}
+renderShopItems();
 function refreshShopAffordability() {
   for (const el of shopItemsEl.children) {
     const def = CATALOG.find(d => d.id === el.dataset.id);
@@ -174,7 +194,7 @@ function startPlacement(def) {
   const item = def.build(ctx);
   item.group.traverse(o => { if (o.isMesh) { o.material = ghostMat; o.castShadow = false; } });
   scene.add(item.group);
-  ghost = { group: item.group, def, collider: item.collider, ry: 0, valid: false };
+  ghost = { group: item.group, def, foot: item.foot, soft: !!item.soft, ry: 0, valid: false };
   placeHintEl.style.display = 'block';
   beep(700, 0.05, 'sine', 0.03);
 }
@@ -182,15 +202,16 @@ function cancelGhost() {
   if (ghost) { scene.remove(ghost.group); ghost = null; }
   placeHintEl.style.display = 'none';
 }
-function ghostColliderSize(ry, col) {
+function ghostFootSize(ry, foot) {
   const rotated = Math.round(ry / (Math.PI / 2)) % 2 !== 0;
-  return rotated ? { w: col.d, d: col.w } : { w: col.w, d: col.d };
+  return rotated ? { w: foot.d, d: foot.w } : { w: foot.w, d: foot.d };
 }
-function placementValid(x, z, ry, col) {
+function placementValid(x, z, ry, foot, soft) {
   const { W, D } = room.bounds;
-  const { w, d } = ghostColliderSize(ry, col);
+  const { w, d } = ghostFootSize(ry, foot);
   if (x - w / 2 < -W / 2 + 0.15 || x + w / 2 > W / 2 - 0.15) return false;
   if (z - d / 2 < -D / 2 + 0.15 || z + d / 2 > D / 2 - 0.15) return false;
+  if (soft) return true; // 地毯/吊灯/搁板等可与家具重叠
   for (const c of room.colliders)
     if (x - w / 2 < c.maxX && x + w / 2 > c.minX && z - d / 2 < c.maxZ && z + d / 2 > c.minZ) return false;
   return true;
@@ -212,8 +233,10 @@ function registerItem(item, x, z, ry) {
   item.group.position.set(x, 0, z);
   item.group.rotation.y = ry;
   scene.add(item.group);
-  const { w, d } = ghostColliderSize(ry, item.collider);
-  room.colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  if (!item.soft) {
+    const { w, d } = ghostFootSize(ry, item.foot);
+    room.colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  }
   for (const it of item.interactables) room.interactables.push({ radius: 2.4, ...it });
   if (item.updater) updaters.add(item.updater);
 }
@@ -289,7 +312,7 @@ addEventListener('mousemove', e => {
       const z = Math.round(hit.z / 0.25) * 0.25;
       ghost.group.position.set(x, 0, z);
       ghost.group.rotation.y = ghost.ry;
-      ghost.valid = placementValid(x, z, ghost.ry, ghost.collider);
+      ghost.valid = placementValid(x, z, ghost.ry, ghost.foot, ghost.soft);
       ghostMat.color.setHex(ghost.valid ? 0x33ff66 : 0xff4444);
     }
   }
@@ -384,31 +407,21 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  // 移动（相对相机朝向）
+  // 移动（相对角色朝向：W 前进 / S 后退 / A D 转向，与相机无关）
   const run = keys['ShiftLeft'] || keys['ShiftRight'];
   const speed = run ? 7 : 3.5;
-  let mx = 0, mz = 0;
+  let fwd = 0;
   if (!buyMode) {
-    if (keys['KeyW']) mz -= 1;
-    if (keys['KeyS']) mz += 1;
-    if (keys['KeyA']) mx -= 1;
-    if (keys['KeyD']) mx += 1;
+    if (keys['KeyW']) fwd += 1;
+    if (keys['KeyS']) fwd -= 1;
+    if (keys['KeyA']) player.rotation.y += 3.2 * dt;  // 左转
+    if (keys['KeyD']) player.rotation.y -= 3.2 * dt;  // 右转
   }
-  const moving = mx !== 0 || mz !== 0;
+  const moving = fwd !== 0;
   if (moving) {
-    const len = Math.hypot(mx, mz);
-    mx /= len; mz /= len;
-    const sin = Math.sin(camTheta), cos = Math.cos(camTheta);
-    const wx = mx * cos - mz * sin;
-    const wz = mx * sin + mz * cos;
-    player.position.x += wx * speed * dt;
-    player.position.z += wz * speed * dt;
-    // 角色朝向移动方向
-    const targetRy = Math.atan2(wx, wz);
-    let dr = targetRy - player.rotation.y;
-    while (dr > Math.PI) dr -= Math.PI * 2;
-    while (dr < -Math.PI) dr += Math.PI * 2;
-    player.rotation.y += dr * Math.min(1, dt * 12);
+    const sp = speed * (fwd < 0 ? 0.6 : 1) * fwd; // 后退减速
+    player.position.x += Math.sin(player.rotation.y) * sp * dt;
+    player.position.z += Math.cos(player.rotation.y) * sp * dt;
   }
   collide(player.position);
 
@@ -455,3 +468,6 @@ function animate() {
   renderer.render(scene, camera);
 }
 animate();
+
+// 调试/测试钩子
+window.__game = { player, room, catalog: CATALOG, camera };
