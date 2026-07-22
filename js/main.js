@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { buildRoom, makeBox } from './room.js';
 import { getCatalog, beep } from './shop.js';
+import { getOutfits, makeHat } from './outfits.js';
 
 function init(theme) {
 const CATALOG = getCatalog(theme);
@@ -45,6 +46,7 @@ const parts = {};
   const shirt = theme === 'victorian' ? 0x4a2e2e : 0x4f7ad9;
   const pants = theme === 'victorian' ? 0x2e2a26 : 0x3d4a5c;
   const torso = makeBox(0.42, 0.55, 0.24, shirt); torso.position.y = 0.95; player.add(torso);
+  parts.torso = torso;
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 20, 16),
     new THREE.MeshStandardMaterial({ color: skin, roughness: 0.7 }));
   head.position.y = 1.42; head.castShadow = true; player.add(head);
@@ -66,16 +68,22 @@ const parts = {};
   parts.legL = mkLimb(0.13, 0.62, 0.13, pants, -0.12, 0.68);
   parts.legR = mkLimb(0.13, 0.62, 0.13, pants, 0.12, 0.68);
 }
-// 维多利亚：船长礼服帽
-if (theme === 'victorian') {
-  const hatMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 });
-  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.03, 20), hatMat);
-  brim.position.y = 1.56; brim.castShadow = true; player.add(brim);
-  const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.24, 20), hatMat);
-  crown.position.y = 1.69; crown.castShadow = true; player.add(crown);
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.175, 0.18, 0.05, 20),
-    new THREE.MeshStandardMaterial({ color: 0x8a2e2e, roughness: 0.8 }));
-  band.position.y = 1.6; player.add(band);
+// ---------- 服装系统 ----------
+const outfits = getOutfits(theme);
+let hatGroup = null;
+let currentOutfit = null;
+function applyOutfit(o, silent) {
+  parts.torso.material.color.setHex(o.shirt);
+  parts.armL.children[0].material.color.setHex(o.shirt);
+  parts.armR.children[0].material.color.setHex(o.shirt);
+  parts.legL.children[0].material.color.setHex(o.pants);
+  parts.legR.children[0].material.color.setHex(o.pants);
+  if (hatGroup) { player.remove(hatGroup); hatGroup = null; }
+  hatGroup = makeHat(o.hat);
+  if (hatGroup) player.add(hatGroup);
+  currentOutfit = o;
+  for (const el of dressItemsEl.children) el.classList.toggle('active', el.dataset.id === o.id);
+  if (!silent) { beep(700, 0.08, 'sine', 0.05); ctx.flashMessage(`${o.icon} 换上了「${o.name}」！`); saveGame(); }
 }
 player.position.set(0, 0, 2);
 scene.add(player);
@@ -96,7 +104,7 @@ function setMoney(v) {
   refreshShopAffordability();
 }
 function saveGame() {
-  localStorage.setItem(SAVE_KEY, JSON.stringify({ money, items: placedItems }));
+  localStorage.setItem(SAVE_KEY, JSON.stringify({ money, items: placedItems, outfit: currentOutfit?.id }));
 }
 
 // ---------- 游戏状态 / 上下文 ----------
@@ -196,6 +204,29 @@ function renderShopItems() {
   refreshShopAffordability();
 }
 renderShopItems();
+
+// ---------- 衣帽间（换装面板）----------
+const dressEl = document.getElementById('dress');
+const dressItemsEl = document.getElementById('dress-items');
+let dressOpen = false;
+for (const o of outfits) {
+  const el = document.createElement('div');
+  el.className = 'dress-item';
+  el.dataset.id = o.id;
+  const hex = n => '#' + n.toString(16).padStart(6, '0');
+  el.innerHTML = `<div class="icon">${o.icon}</div>
+    <div class="info"><div class="name">${o.name}</div>
+    <div class="swatches"><i style="background:${hex(o.shirt)}"></i><i style="background:${hex(o.pants)}"></i></div></div>`;
+  el.addEventListener('click', () => applyOutfit(o));
+  dressItemsEl.appendChild(el);
+}
+function toggleDress(force) {
+  dressOpen = force ?? !dressOpen;
+  dressEl.style.display = dressOpen ? 'block' : 'none';
+  if (dressOpen) document.exitPointerLock();
+  lockTip.style.display = (!buyMode && !dressOpen && !pointerLocked) ? 'block' : 'none';
+}
+ctx.openDress = () => toggleDress(true);
 function refreshShopAffordability() {
   for (const el of shopItemsEl.children) {
     const def = CATALOG.find(d => d.id === el.dataset.id);
@@ -281,9 +312,11 @@ function loadGame() {
       registerItem(def.build(ctx), rec.x, rec.z, rec.ry);
       placedItems.push(rec);
     }
+    applyOutfit(outfits.find(o => o.id === s.outfit) ?? outfits[0], true);
   } catch { /* 存档损坏则忽略 */ }
 }
 loadGame();
+if (!currentOutfit) applyOutfit(outfits[0], true);
 setMoney(money);
 
 // ---------- 输入 ----------
@@ -297,6 +330,7 @@ addEventListener('keydown', e => {
   if (e.code === 'Space') e.preventDefault();
   if (e.code === 'KeyE' && !buyMode) tryInteract();
   if (e.code === 'KeyB') toggleBuy();
+  if (e.code === 'KeyG') toggleDress();
   if (e.code === 'KeyR' && ghost) ghost.ry = (ghost.ry + Math.PI / 2) % (Math.PI * 2);
   if (e.code === 'Escape' && ghost) cancelGhost();
 });
@@ -313,7 +347,7 @@ renderer.domElement.addEventListener('contextmenu', e => {
 lockTip.addEventListener('click', () => renderer.domElement.requestPointerLock());
 document.addEventListener('pointerlockchange', () => {
   pointerLocked = document.pointerLockElement === renderer.domElement;
-  lockTip.style.display = (!pointerLocked && !buyMode) ? 'block' : 'none';
+  lockTip.style.display = (!pointerLocked && !buyMode && !dressOpen) ? 'block' : 'none';
 });
 addEventListener('mousemove', e => {
   if (pointerLocked) {
@@ -490,7 +524,7 @@ function animate() {
 animate();
 
 // 调试/测试钩子
-window.__game = { player, room, catalog: CATALOG, camera };
+window.__game = { player, room, catalog: CATALOG, camera, parts, get outfit() { return currentOutfit?.id; } };
 } // end init()
 
 // ---------- 开局模式选择 ----------

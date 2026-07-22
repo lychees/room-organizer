@@ -536,6 +536,12 @@ export function buildRoom(scene, ctx, theme = 'modern') {
   rackG.position.set(-9.2, 0, 0);
   scene.add(rackG);
   addCollider(-9.2, 0, 0.6, 0.6);
+  addInteractable({
+    pos: new THREE.Vector3(-9.2, 1, 0),
+    meshes: [rackPole],
+    getPrompt: () => '按 <b>E</b> 换衣服 👔',
+    action: () => ctx.openDress?.(),
+  });
 
   // ---------- 垃圾桶 + 纸团（整理任务）----------
   const bin = makeCyl(0.25, 0.2, 0.45, V ? 0x8a5f38 : 0x7f8c8d);
