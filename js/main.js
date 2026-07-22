@@ -177,6 +177,27 @@ const room = buildRoom(scene, ctx, theme);
 for (const u of room.updaters ?? []) updaters.add(u);
 ctx.onProgress();
 
+// ---------- 坐下 / 躺下系统 ----------
+let seat = null; // {type:'sit'|'lie', y, ry, pos, standPos}
+ctx.isSeated = () => !!seat;
+ctx.sitDown = (info) => {
+  if (seat || ctx.carrying) return;
+  seat = info;
+  seat.standPos = player.position.clone();
+  player.position.set(info.pos.x, info.y ?? 0, info.pos.z);
+  if (info.ry !== undefined) player.rotation.y = info.ry;
+  vy = 0;
+  beep(info.type === 'lie' ? 320 : 420, 0.1, 'sine', 0.04);
+};
+function standUp() {
+  if (!seat) return;
+  player.position.copy(seat.standPos);
+  player.position.y = 0;
+  player.rotation.x = 0;
+  seat = null;
+  beep(520, 0.06, 'sine', 0.03);
+}
+
 // ---------- 购买模式（模拟人生式）----------
 const shopEl = document.getElementById('shop');
 const shopItemsEl = document.getElementById('shop-items');
@@ -244,6 +265,7 @@ for (const o of outfits) {
   dressItemsEl.appendChild(el);
 }
 function toggleDress(force) {
+  if (seat) standUp();
   dressOpen = force ?? !dressOpen;
   dressEl.style.display = dressOpen ? 'block' : 'none';
   if (dressOpen) document.exitPointerLock();
@@ -295,6 +317,7 @@ function refreshDesign() {
 for (const id of ['ds-kind', 'ds-w', 'ds-d', 'ds-h']) dsVal(id).addEventListener('input', refreshDesign);
 refreshDesign();
 function toggleDesign(force) {
+  if (seat) standUp();
   designOpen = force ?? !designOpen;
   designEl.style.display = designOpen ? 'block' : 'none';
   if (designOpen) document.exitPointerLock();
@@ -401,6 +424,7 @@ function updateLockTip() {
   lockTip.style.display = (!pointerLocked && !buyMode && !dressOpen && !designOpen) ? 'block' : 'none';
 }
 function toggleBuy() {
+  if (seat) standUp();
   buyMode = !buyMode;
   shopEl.style.display = buyMode ? 'block' : 'none';
   if (buyMode) {
@@ -525,6 +549,12 @@ function collide(pos) {
 // ---------- 交互 ----------
 let focused = null;
 function updateFocus() {
+  if (seat) {
+    if (focused) { setHighlight(focused, false); focused = null; }
+    promptEl.innerHTML = seat.type === 'lie' ? '按 <b>E</b> 起床 🛏️' : '按 <b>E</b> 站起来 🧍';
+    promptEl.style.display = 'block';
+    return;
+  }
   let best = null, bestD = Infinity;
   for (const it of room.interactables) {
     const p = it.getPrompt();
@@ -564,6 +594,7 @@ function setHighlight(it, on) {
 }
 
 function tryInteract() {
+  if (seat) { standUp(); return; }
   if (focused) focused.action();
 }
 
@@ -580,7 +611,7 @@ function animate() {
   const run = keys['ShiftLeft'] || keys['ShiftRight'];
   const speed = run ? 7 : 3.5;
   let fwd = 0;
-  if (!buyMode) {
+  if (!buyMode && !seat) {
     if (keys['KeyW']) fwd += 1;
     if (keys['KeyS']) fwd -= 1;
     if (keys['KeyA']) player.rotation.y += 3.2 * dt;  // 左转
@@ -594,25 +625,49 @@ function animate() {
   }
   collide(player.position);
 
-  // 跳跃 / 重力
-  if (keys['Space'] && grounded && !buyMode) { vy = 6.5; grounded = false; }
-  vy -= 18 * dt;
-  player.position.y += vy * dt;
-  if (player.position.y <= 0) { player.position.y = 0; vy = 0; grounded = true; }
-
-  // 走路动画
-  if (moving && grounded) {
-    walkT += dt * (run ? 13 : 8);
-    const s = Math.sin(walkT) * (run ? 0.75 : 0.5);
-    parts.armL.rotation.x = s; parts.armR.rotation.x = -s;
-    parts.legL.rotation.x = -s; parts.legR.rotation.x = s;
-  } else {
-    for (const k of ['armL', 'armR', 'legL', 'legR'])
-      parts[k].rotation.x *= 0.85;
+  // 跳跃 / 重力（坐下/躺下时悬空固定）
+  if (keys['Space'] && grounded && !buyMode && !seat) { vy = 6.5; grounded = false; }
+  if (!seat) {
+    vy -= 18 * dt;
+    player.position.y += vy * dt;
+    if (player.position.y <= 0) { player.position.y = 0; vy = 0; grounded = true; }
   }
-  // 拿东西时举手
-  if (ctx.carrying) {
-    parts.armL.rotation.x = parts.armR.rotation.x = -2.6;
+
+  // 姿势动画：坐下 / 躺下 / 走路
+  if (seat?.type === 'lie') {
+    // 躺下：身体放平 + 呼吸起伏 + 双臂微张
+    player.rotation.x += (-Math.PI / 2 - player.rotation.x) * Math.min(1, dt * 5);
+    parts.legL.rotation.x *= 0.85; parts.legR.rotation.x *= 0.85;
+    parts.armL.rotation.x *= 0.85; parts.armR.rotation.x *= 0.85;
+    parts.armL.rotation.z += (0.4 - parts.armL.rotation.z) * Math.min(1, dt * 5);
+    parts.armR.rotation.z += (-0.4 - parts.armR.rotation.z) * Math.min(1, dt * 5);
+    parts.torso.scale.y = 1 + Math.sin(clock.elapsedTime * 1.8) * 0.025; // 呼吸
+    parts.head && (parts.head.position.y = 1.42 + Math.sin(clock.elapsedTime * 1.8) * 0.008);
+  } else if (seat) {
+    // 坐下：大腿前伸 + 小腿晃悠 + 手搭在腿上
+    player.rotation.x *= 0.8;
+    const swing = Math.sin(clock.elapsedTime * 2.2) * 0.12;
+    parts.legL.rotation.x = -1.45 + swing;
+    parts.legR.rotation.x = -1.45 - swing;
+    parts.armL.rotation.x += (-0.55 - parts.armL.rotation.x) * Math.min(1, dt * 6);
+    parts.armR.rotation.x += (-0.55 - parts.armR.rotation.x) * Math.min(1, dt * 6);
+    parts.armL.rotation.z *= 0.8; parts.armR.rotation.z *= 0.8;
+  } else {
+    player.rotation.x *= 0.8;
+    parts.torso.scale.y = 1;
+    if (moving && grounded) {
+      walkT += dt * (run ? 13 : 8);
+      const s = Math.sin(walkT) * (run ? 0.75 : 0.5);
+      parts.armL.rotation.x = s; parts.armR.rotation.x = -s;
+      parts.legL.rotation.x = -s; parts.legR.rotation.x = s;
+    } else {
+      for (const k of ['armL', 'armR', 'legL', 'legR'])
+        parts[k].rotation.x *= 0.85;
+    }
+    // 拿东西时举手
+    if (ctx.carrying) {
+      parts.armL.rotation.x = parts.armR.rotation.x = -2.6;
+    }
   }
 
   // 携带物轻微浮动
@@ -623,7 +678,7 @@ function animate() {
 
   // 第三人称相机
   const target = new THREE.Vector3(
-    player.position.x, player.position.y + 1.5, player.position.z);
+    player.position.x, player.position.y + (seat?.type === 'lie' ? 0.7 : 1.5), player.position.z);
   const cx = target.x + CAM_DIST * Math.sin(camTheta) * Math.cos(camPhi);
   const cy = target.y + CAM_DIST * Math.sin(camPhi);
   const cz = target.z + CAM_DIST * Math.cos(camTheta) * Math.cos(camPhi);
@@ -639,7 +694,7 @@ function animate() {
 animate();
 
 // 调试/测试钩子
-window.__game = { player, room, catalog: CATALOG, camera, parts, get outfit() { return currentOutfit?.id; } };
+window.__game = { player, room, catalog: CATALOG, camera, parts, get outfit() { return currentOutfit?.id; }, get seat() { return seat; } };
 } // end init()
 
 // ---------- 开局模式选择 ----------

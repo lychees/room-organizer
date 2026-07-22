@@ -114,6 +114,18 @@ function plantAct(ctx, g, leaves, message = '🌱 植物喝饱了水，更有精
     },
   };
 }
+function seatAct(ctx, g, meshes, opts) {
+  return {
+    pos: g.position, meshes,
+    getPrompt: () => (ctx.carrying || ctx.isSeated?.()) ? null : `按 <b>E</b> ${opts.prompt ?? '坐下 🪑'}`,
+    action: () => ctx.sitDown({
+      type: opts.type ?? 'sit',
+      y: opts.y,
+      ry: g.rotation.y + (opts.ry ?? 0),
+      pos: g.position.clone(),
+    }),
+  };
+}
 function bookStorageAct(ctx, g, slotLocals) {
   const slots = slotLocals.map(l => ({ local: l, used: false }));
   return {
@@ -336,7 +348,7 @@ function gChair(o) {
       legs4(g, 0.44, 0.44, seatY, 0.05, o.frame);
     }
     const w = o.style === 'bench' ? (o.len ?? 1.2) : 0.6;
-    return { group: g, foot: { w, d: 0.6 }, interactables: [actMsg(ctx, g, [g.children[0]], '坐一会儿', '🪑 坐下来了，真舒服～', 480)] };
+    return { group: g, foot: { w, d: 0.6 }, interactables: [seatAct(ctx, g, [g.children[0]], { y: o.style === 'stool' ? 0.1 : -0.2, prompt: '坐下 🪑' })] };
   };
 }
 
@@ -356,7 +368,7 @@ function gSofa(o) {
     if (o.lshape) { add(g, B(0.8, 0.45, 1.0, o.color), W / 2 - 0.4, 0.25, 0.95); extra = 1; }
     return {
       group: g, foot: { w: W, d: o.lshape ? 2.0 : 1.05 },
-      interactables: [actMsg(ctx, g, [g.children[0]], '瘫在沙发上', '🛋️ 陷进沙发里，不想起来了……', 440)],
+      interactables: [seatAct(ctx, g, [g.children[0]], { y: -0.2, prompt: '坐上沙发 🛋️' })],
     };
   };
 }
@@ -365,7 +377,7 @@ function gBeanbag(o) {
     const g = new THREE.Group();
     const bag = S(0.45, o.color, 18);
     bag.scale.y = 0.72; add(g, bag, 0, 0.3, 0);
-    return { group: g, foot: { w: 0.9, d: 0.9 }, interactables: [actMsg(ctx, g, [bag], '瘫上去', '🫠 整个人都陷进去了……', 400)] };
+    return { group: g, foot: { w: 0.9, d: 0.9 }, interactables: [seatAct(ctx, g, [bag], { type: 'lie', y: 0.5, prompt: '瘫上去 🫠' })] };
   };
 }
 
@@ -400,7 +412,8 @@ function gBed(o) {
       }
     }
     const w = o.style === 'round' ? 2.2 : o.w, d = o.style === 'round' ? 2.2 : o.d;
-    return { group: g, foot: { w, d }, interactables: [actMsg(ctx, g, [g.children[0]], '躺下休息', '😴 好舒服……差点睡着了', 380)] };
+    const lieY = o.style === 'tatami' ? 0.3 : o.style === 'round' ? 0.6 : 0.55;
+    return { group: g, foot: { w, d }, interactables: [seatAct(ctx, g, [g.children[0]], { type: 'lie', y: lieY, prompt: '躺下休息 🛏️' })] };
   };
 }
 
@@ -2045,7 +2058,7 @@ function gHammock(o) {
       seg.rotation.z = (t - 0.5) * -1.2;
       seg.castShadow = true;
     }
-    return { group: g, foot: { w: 2.1, d: 0.7 }, interactables: [actMsg(ctx, g, [g.children[4]], '躺进吊床', '⛵ 晃啊晃……想起在海上的日子', 420)] };
+    return { group: g, foot: { w: 2.1, d: 0.7 }, interactables: [seatAct(ctx, g, [g.children[4]], { type: 'lie', y: 0.6, ry: Math.PI / 2, prompt: '躺进吊床 ⛵' })] };
   };
 }
 function gFourPoster(o) {
@@ -2065,7 +2078,7 @@ function gFourPoster(o) {
       const curtain = add(g, B(0.06, 1.5, 0.5, o.canopy ?? 0x8a2e3a), sx * 0.75, 1.1, -0.8);
       curtain.material.transparent = true; curtain.material.opacity = 0.85;
     }
-    return { group: g, foot: { w: 1.7, d: 2.2 }, interactables: [actMsg(ctx, g, [g.children[1]], '躺下休息', '👑 像贵族一样入眠……', 380)] };
+    return { group: g, foot: { w: 1.7, d: 2.2 }, interactables: [seatAct(ctx, g, [g.children[1]], { type: 'lie', y: 0.55, prompt: '躺下休息 👑' })] };
   };
 }
 function gWingback(o) {
@@ -2082,7 +2095,7 @@ function gWingback(o) {
       add(g, C(0.03, 0.04, 0.15, DARKWOOD), sx * 0.24, 0.075, -0.2);
     }
     add(g, B(0.5, 0.1, 0.45, o.cushion ?? 0x8a4a5a), 0, 0.5, 0.03);
-    return { group: g, foot: { w: 0.7, d: 0.7 }, interactables: [actMsg(ctx, g, [g.children[0]], '坐进扶手椅', '🛋️ 包裹感十足的贵族座椅！', 460)] };
+    return { group: g, foot: { w: 0.7, d: 0.7 }, interactables: [seatAct(ctx, g, [g.children[0]], { y: -0.15, prompt: '坐进扶手椅 🪑' })] };
   };
 }
 function gTeaSet(o) {
@@ -2211,14 +2224,14 @@ export function customFurniture(design) {
         add(g, B(w, 0.06, dep, c1), 0, seatY, 0);
         add(g, B(w, h - seatY, 0.06, c1), 0, seatY + (h - seatY) / 2, -dep / 2 + 0.03);
         legs4(g, w, dep, seatY, 0.05, c2);
-        interactables = [actMsg(ctx, g, [g.children[0]], '坐一会儿', `🪑 坐在「${name}」上，真舒服～`, 480)];
+        interactables = [seatAct(ctx, g, [g.children[0]], { y: seatY - 0.68, prompt: `坐上「${name}」 🪑` })];
         break;
       }
       case 'stool': {
         add(g, C(w / 2, w / 2, 0.06, c1, 20), 0, h, 0);
         add(g, C(0.04, 0.05, h, c2), 0, h / 2, 0);
         add(g, C(w / 2 * 0.85, w / 2 * 0.95, 0.04, c2, 20), 0, 0.02, 0);
-        interactables = [actMsg(ctx, g, [g.children[0]], '坐一会儿', `🪑 「${name}」稳稳当当！`, 480)];
+        interactables = [seatAct(ctx, g, [g.children[0]], { y: h + 0.03 - 0.68, prompt: `坐上「${name}」 🪑` })];
         break;
       }
       case 'shelf': {

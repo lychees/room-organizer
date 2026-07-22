@@ -257,13 +257,21 @@ export function buildRoom(scene, ctx, theme = 'modern') {
   addInteractable({
     pos: chairG.position,
     meshes: [chairG],
-    getPrompt: () => !chairTask.done ? '按 <b>E</b> 把椅子放回书桌' : null,
+    getPrompt: () => {
+      if (!chairTask.done) return '按 <b>E</b> 把椅子放回书桌';
+      if (ctx.carrying || ctx.isSeated?.()) return null;
+      return '按 <b>E</b> 坐下 🪑';
+    },
     action: () => {
-      chairG.position.set(chairHome.x, 0, chairHome.z);
-      chairG.rotation.y = chairHome.ry;
-      Object.assign(chairCollider, { minX: chairHome.x - 0.3, maxX: chairHome.x + 0.3, minZ: chairHome.z - 0.3, maxZ: chairHome.z + 0.3 });
-      chairTask.done = true;
-      ctx.onProgress();
+      if (!chairTask.done) {
+        chairG.position.set(chairHome.x, 0, chairHome.z);
+        chairG.rotation.y = chairHome.ry;
+        Object.assign(chairCollider, { minX: chairHome.x - 0.3, maxX: chairHome.x + 0.3, minZ: chairHome.z - 0.3, maxZ: chairHome.z + 0.3 });
+        chairTask.done = true;
+        ctx.onProgress();
+      } else {
+        ctx.sitDown({ type: 'sit', y: -0.17, ry: chairHome.ry, pos: new THREE.Vector3(chairHome.x, 0, chairHome.z) });
+      }
     },
   });
 
@@ -281,12 +289,20 @@ export function buildRoom(scene, ctx, theme = 'modern') {
   addInteractable({
     pos: new THREE.Vector3(8.2, 0.5, -3),
     meshes: [blanket, pillow],
-    getPrompt: () => !bedTask.done ? '按 <b>E</b> 整理床铺' : null,
+    getPrompt: () => {
+      if (!bedTask.done) return '按 <b>E</b> 整理床铺';
+      if (ctx.carrying || ctx.isSeated?.()) return null;
+      return '按 <b>E</b> 躺下休息 🛏️';
+    },
     action: () => {
-      blanket.position.set(0, 0.56, 0.3); blanket.rotation.y = 0;
-      pillow.position.set(0, 0.58, -0.85); pillow.rotation.y = 0;
-      bedTask.done = true;
-      ctx.onProgress();
+      if (!bedTask.done) {
+        blanket.position.set(0, 0.56, 0.3); blanket.rotation.y = 0;
+        pillow.position.set(0, 0.58, -0.85); pillow.rotation.y = 0;
+        bedTask.done = true;
+        ctx.onProgress();
+      } else {
+        ctx.sitDown({ type: 'lie', y: 0.55, ry: 0, pos: new THREE.Vector3(8.2, 0, -3) });
+      }
     },
   });
 
@@ -301,6 +317,12 @@ export function buildRoom(scene, ctx, theme = 'modern') {
   sofaG.rotation.y = Math.PI / 2; // 面向 +x
   scene.add(sofaG);
   addCollider(3, 2.2, 1.1, 2.5);
+  addInteractable({
+    pos: new THREE.Vector3(3, 0.5, 2.9),
+    meshes: [sofaBase],
+    getPrompt: () => (ctx.carrying || ctx.isSeated?.()) ? null : '按 <b>E</b> 坐上沙发 🛋️',
+    action: () => ctx.sitDown({ type: 'sit', y: -0.2, ry: Math.PI / 2, pos: new THREE.Vector3(3, 0, 2.2) }),
+  });
 
   const cushion = makeBox(0.4, 0.4, 0.15, 0xe0a83c);
   cushion.position.set(2, 0.2, 4.2); // 掉在地上
