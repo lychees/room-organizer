@@ -88,6 +88,38 @@
     margin-right: 4px; border: 1px solid rgba(255,255,255,.4);
   }
   #dress-footer { text-align: center; font-size: 12px; opacity: .8; margin-top: 4px; }
+  /* 自定义外观 + 设计器 */
+  #custom-skin { border-top: 1px solid rgba(255,255,255,.2); margin-top: 10px; padding-top: 10px; }
+  #custom-skin h4 { font-size: 13px; margin-bottom: 8px; color: #ffd54a; }
+  #custom-skin label, #design label {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 12px; margin-bottom: 6px; gap: 8px;
+  }
+  #custom-skin input[type=color], #design input[type=color] {
+    width: 42px; height: 22px; border: none; border-radius: 4px; cursor: pointer; background: none; padding: 0;
+  }
+  #custom-skin select, #design select, #design input[type=text] {
+    background: rgba(255,255,255,.1); color: #fff; border: 1px solid rgba(255,255,255,.3);
+    border-radius: 4px; padding: 2px 6px; font-size: 12px; flex: 1; max-width: 130px;
+  }
+  #custom-skin button, #design button, #open-design {
+    width: 100%; margin-top: 6px; padding: 6px; border: none; border-radius: 6px;
+    background: #5a6ecf; color: #fff; cursor: pointer; font-size: 13px;
+  }
+  #custom-skin button:hover, #design button:hover, #open-design:hover { background: #7a8eff; }
+  #design {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    width: 300px; z-index: 30; display: none;
+    background: rgba(20,20,35,.95); border: 1px solid rgba(255,255,255,.3);
+    border-radius: 14px; padding: 18px; color: #fff; font-size: 14px;
+  }
+  #design h3 { margin-bottom: 12px; }
+  #design input[type=range] { flex: 1; }
+  #design label span { width: 46px; text-align: right; font-size: 11px; opacity: .8; }
+  #ds-price { text-align: center; color: #ffd54a; font-weight: bold; margin: 10px 0 4px; }
+  #design-footer { text-align: center; font-size: 11px; opacity: .7; margin-top: 8px; }
+  #open-design { width: auto; background: #3a7a4a; margin-top: 4px; padding: 3px 14px; font-size: 12px; }
+  #open-design:hover { background: #4a9a5e; }
   .shop-item {
     display: flex; align-items: center; gap: 10px; padding: 8px; margin-bottom: 8px;
     background: rgba(255,255,255,.08); border-radius: 8px; cursor: pointer;
@@ -143,7 +175,7 @@
 <div class="hud" id="help">
   <b>W/S</b> 前进/后退　<b>A/D</b> 转向<br>
   <b>鼠标</b> 视角　<b>空格</b> 跳跃　<b>Shift</b> 加速跑<br>
-  <b>E</b> 交互　<b>G</b> 换装　<b>B</b> 购买家具
+  <b>E</b> 交互　<b>G</b> 换装　<b>B</b> 商店　<b>C</b> 设计家具
 </div>
 <div class="hud" id="win">🎉 房间整理完毕！<small>你把所有东西都归置好了，真棒！</small></div>
 <div class="hud" id="lock-tip">🖱️ 点击画面开始游戏</div>
@@ -170,6 +202,7 @@
   <div id="shop-items"></div>
   <div id="shop-footer">
     整理房间可以赚取 §100 / 项<br>
+    <button id="open-design">🎨 设计家具</button>
     <button id="reset-save">🗑️ 清空存档</button>
   </div>
 </div>
@@ -177,7 +210,32 @@
 <div id="dress">
   <h3>👔 衣帽间</h3>
   <div id="dress-items"></div>
+  <div id="custom-skin">
+    <h4>🎨 自定义外观</h4>
+    <label>肤色 <input type="color" id="cs-skin" value="#f2c89a"></label>
+    <label>发色 <input type="color" id="cs-hair" value="#4a3524"></label>
+    <label>上衣 <input type="color" id="cs-shirt" value="#4f7ad9"></label>
+    <label>裤子 <input type="color" id="cs-pants" value="#3d4a5c"></label>
+    <label>帽子 <select id="cs-hat-type"></select></label>
+    <label>帽色 <input type="color" id="cs-hat-color" value="#d94f4f"></label>
+    <button id="cs-apply">✨ 应用自定义装扮</button>
+  </div>
   <div id="dress-footer">按 <b>G</b> 关闭 ｜ 衣帽架按 E 也可换装</div>
+</div>
+
+<div id="design">
+  <h3>🎨 设计家具</h3>
+  <label>类型 <select id="ds-kind"></select></label>
+  <label>名称 <input type="text" id="ds-name" maxlength="10" placeholder="我的家具"></label>
+  <label>宽 <input type="range" id="ds-w" min="0.3" max="2.5" step="0.05" value="1"><span id="ds-w-v"></span></label>
+  <label>深 <input type="range" id="ds-d" min="0.3" max="2.5" step="0.05" value="0.6"><span id="ds-d-v"></span></label>
+  <label>高 <input type="range" id="ds-h" min="0.2" max="2.5" step="0.05" value="0.75"><span id="ds-h-v"></span></label>
+  <label>主色 <input type="color" id="ds-c1" value="#8a5f38"></label>
+  <label>配色 <input type="color" id="ds-c2" value="#6b4527"></label>
+  <div id="ds-price">预估价格：§0</div>
+  <button id="ds-place">📐 保存设计并放置</button>
+  <button id="ds-save">💾 仅保存设计</button>
+  <div id="design-footer">按 <b>C</b> 关闭 ｜ 设计会保存在商店「自定义」分类</div>
 </div>
 
 <script type="importmap">

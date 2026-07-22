@@ -2175,3 +2175,135 @@ export const VICTORIAN_CATALOG = [
 export function getCatalog(theme) {
   return theme === 'victorian' ? VICTORIAN_CATALOG : CATALOG;
 }
+
+// ============================================================
+//  玩家自定义家具（设计器）
+// ============================================================
+export const CUSTOM_KINDS = {
+  table: { label: '桌子', icon: '🪑', base: 150 },
+  chair: { label: '椅子', icon: '🪑', base: 90 },
+  stool: { label: '圆凳', icon: '🪑', base: 70 },
+  shelf: { label: '书架', icon: '📚', base: 200 },
+  cabinet: { label: '柜子', icon: '🚪', base: 220 },
+  lamp: { label: '落地灯', icon: '💡', base: 120 },
+  plant: { label: '盆栽', icon: '🪴', base: 60 },
+  crate: { label: '木箱', icon: '📦', base: 60 },
+  rug: { label: '地毯', icon: '🧶', base: 80 },
+  statue: { label: '雕塑', icon: '🗿', base: 200 },
+};
+
+// design: { kind, w, d, h, c1, c2, name }
+export function customFurniture(design) {
+  return (ctx) => {
+    const { kind, w, d: dep, h, c1, c2, name } = design;
+    const g = new THREE.Group();
+    let interactables, updater, soft = false, foot = { w: w + 0.1, d: dep + 0.1 };
+
+    switch (kind) {
+      case 'table': {
+        add(g, B(w, 0.06, dep, c1), 0, h, 0);
+        legs4(g, w, dep, h, 0.06, c2);
+        interactables = [actMsg(ctx, g, [g.children[0]], '擦擦桌子', `🧽 「${name}」被擦得闪闪发亮！`, 600)];
+        break;
+      }
+      case 'chair': {
+        const seatY = Math.max(0.2, h * 0.5);
+        add(g, B(w, 0.06, dep, c1), 0, seatY, 0);
+        add(g, B(w, h - seatY, 0.06, c1), 0, seatY + (h - seatY) / 2, -dep / 2 + 0.03);
+        legs4(g, w, dep, seatY, 0.05, c2);
+        interactables = [actMsg(ctx, g, [g.children[0]], '坐一会儿', `🪑 坐在「${name}」上，真舒服～`, 480)];
+        break;
+      }
+      case 'stool': {
+        add(g, C(w / 2, w / 2, 0.06, c1, 20), 0, h, 0);
+        add(g, C(0.04, 0.05, h, c2), 0, h / 2, 0);
+        add(g, C(w / 2 * 0.85, w / 2 * 0.95, 0.04, c2, 20), 0, 0.02, 0);
+        interactables = [actMsg(ctx, g, [g.children[0]], '坐一会儿', `🪑 「${name}」稳稳当当！`, 480)];
+        break;
+      }
+      case 'shelf': {
+        const levels = Math.max(1, Math.round(h / 0.6));
+        add(g, B(0.06, h, dep, c1), -w / 2, h / 2, 0);
+        add(g, B(0.06, h, dep, c1), w / 2, h / 2, 0);
+        add(g, B(w, 0.05, dep, c1), 0, h, 0);
+        add(g, B(w, 0.05, dep, c1), 0, 0.03, 0);
+        add(g, B(w, h, 0.04, c2), 0, h / 2, -dep / 2);
+        const slots = [];
+        for (let i = 1; i < levels; i++) add(g, B(w, 0.04, dep - 0.03, c1), 0, h / levels * i, 0);
+        for (let i = 0; i < levels; i++)
+          for (const x of [-w / 4 - 0.1, w / 4 - 0.15])
+            slots.push(new THREE.Vector3(x, h / levels * i + 0.08, 0.03));
+        interactables = [bookStorageAct(ctx, g, slots)];
+        break;
+      }
+      case 'cabinet': {
+        add(g, B(w, h, dep, c1), 0, h / 2, 0);
+        const pivot = new THREE.Group();
+        pivot.position.set(-w / 2 + 0.02, h / 2, dep / 2 + 0.02);
+        const door = B(w - 0.06, h - 0.06, 0.04, c2);
+        door.position.x = w / 2 - 0.03;
+        pivot.add(door); g.add(pivot);
+        interactables = [doorAct(g, pivot, door, -1.9, '柜门')];
+        break;
+      }
+      case 'lamp': {
+        add(g, C(0.2, 0.24, 0.05, c2), 0, 0.03, 0);
+        add(g, C(0.03, 0.03, h - 0.3, c2), 0, (h - 0.3) / 2, 0);
+        const shadeMat = new THREE.MeshStandardMaterial({ color: c1, roughness: 0.9 });
+        const shade = add(g, new THREE.Mesh(new THREE.ConeGeometry(Math.max(0.18, w / 2), 0.35, 18, 1, true), shadeMat), 0, h - 0.15, 0);
+        shade.castShadow = true;
+        const light = new THREE.PointLight(0xffdca0, 0, 8);
+        add(g, light, 0, h - 0.25, 0);
+        interactables = [lightAct(g, shade, light)];
+        break;
+      }
+      case 'plant': {
+        add(g, C(w / 2, w / 3, h * 0.35, c1, 18), 0, h * 0.175, 0);
+        const leaves = new THREE.Group();
+        const r = Math.min(w, h) * 0.5;
+        add(leaves, C(0.02, 0.03, h * 0.4, 0x3f7a3f), 0, h * 0.2, 0);
+        add(leaves, new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1),
+          new THREE.MeshStandardMaterial({ color: c2, roughness: 1 })), 0, h * 0.55, 0);
+        leaves.position.y = h * 0.35;
+        leaves.traverse(m => { if (m.isMesh) m.castShadow = true; });
+        g.add(leaves);
+        interactables = [plantAct(ctx, g, leaves, `🌱 「${name}」喝饱了水！`)];
+        break;
+      }
+      case 'crate': {
+        add(g, B(w, h * 0.75, dep, c1), 0, h * 0.375, 0);
+        const lid = add(g, B(w + 0.04, h * 0.25, dep + 0.04, c2), 0, h * 0.875, 0);
+        lid.geometry.translate(0, 0, -dep / 2); lid.position.z = dep / 2;
+        interactables = [lidAct(g, lid, name)];
+        break;
+      }
+      case 'rug': {
+        const mat = new THREE.MeshStandardMaterial({ color: c1, roughness: 1 });
+        const mesh = new THREE.Mesh(new THREE.CircleGeometry(w / 2, 28), mat);
+        mesh.rotation.x = -Math.PI / 2; mesh.position.y = 0.015; mesh.receiveShadow = true;
+        g.add(mesh);
+        const inner = new THREE.Mesh(new THREE.CircleGeometry(w / 4, 24), new THREE.MeshStandardMaterial({ color: c2, roughness: 1 }));
+        inner.rotation.x = -Math.PI / 2; inner.position.y = 0.02;
+        g.add(inner);
+        soft = true;
+        foot = { w, d: w };
+        interactables = [actMsg(ctx, g, [mesh], '踩踩地毯', `🧶 「${name}」软乎乎的！`, 500)];
+        break;
+      }
+      case 'statue': {
+        add(g, B(w * 0.6, h * 0.4, dep * 0.6, c1), 0, h * 0.2, 0);
+        const art = new THREE.Mesh(new THREE.TorusKnotGeometry(Math.min(w, h) * 0.18, Math.min(w, h) * 0.06, 64, 8),
+          new THREE.MeshStandardMaterial({ color: c2, roughness: 0.3, metalness: 0.7 }));
+        art.castShadow = true;
+        add(g, art, 0, h * 0.75, 0);
+        updater = (dt) => { art.rotation.y += dt * 0.4; };
+        interactables = [actMsg(ctx, g, [art], '欣赏雕塑', `🗿 「${name}」——你的得意之作！`, 560)];
+        break;
+      }
+    }
+    const result = { group: g, foot, interactables };
+    if (updater) result.updater = updater;
+    if (soft) result.soft = true;
+    return result;
+  };
+}

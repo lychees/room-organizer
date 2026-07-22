@@ -1,12 +1,21 @@
 // 整理房间大作战 —— 主逻辑
 import * as THREE from 'three';
 import { buildRoom, makeBox } from './room.js';
-import { getCatalog, beep } from './shop.js';
+import { getCatalog, beep, customFurniture, CUSTOM_KINDS } from './shop.js';
 import { getOutfits, makeHat } from './outfits.js';
 
 function init(theme) {
-const CATALOG = getCatalog(theme);
 const SAVE_KEY = `roomOrganizerSave_${theme}`;
+const savedRaw = (() => { try { return JSON.parse(localStorage.getItem(SAVE_KEY)); } catch { return null; } })();
+// 玩家自定义设计的家具（按主题持久化）
+const customDesigns = savedRaw?.designs ?? [];
+const designToDef = (d) => ({
+  id: d.id, icon: CUSTOM_KINDS[d.kind]?.icon ?? '🎨', name: d.name,
+  price: d.price, cat: '自定义', desc: `你设计的${CUSTOM_KINDS[d.kind]?.label ?? '家具'} · ${d.w}×${d.d}×${d.h}m`,
+  build: customFurniture(d),
+});
+const CATALOG = [...getCatalog(theme), ...customDesigns.map(designToDef)];
+let customConfig = null; // 自定义外观配置
 document.getElementById('title').textContent =
   theme === 'victorian' ? '⚓ 大航海 · 维多利亚房间' : '🏠 整理房间大作战';
 
@@ -50,9 +59,11 @@ const parts = {};
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 20, 16),
     new THREE.MeshStandardMaterial({ color: skin, roughness: 0.7 }));
   head.position.y = 1.42; head.castShadow = true; player.add(head);
+  parts.head = head;
   const hair = new THREE.Mesh(new THREE.SphereGeometry(0.185, 20, 16, 0, Math.PI * 2, 0, Math.PI / 2.2),
     new THREE.MeshStandardMaterial({ color: 0x4a3524, roughness: 1 }));
   hair.position.y = 1.45; player.add(hair);
+  parts.hair = hair;
 
   const mkLimb = (w, h, d, color, x, y) => {
     const pivot = new THREE.Group();
@@ -78,10 +89,13 @@ function applyOutfit(o, silent) {
   parts.armR.children[0].material.color.setHex(o.shirt);
   parts.legL.children[0].material.color.setHex(o.pants);
   parts.legR.children[0].material.color.setHex(o.pants);
+  if (o.skin) parts.head.material.color.setHex(o.skin);
+  if (o.hair) parts.hair.material.color.setHex(o.hair);
   if (hatGroup) { player.remove(hatGroup); hatGroup = null; }
   hatGroup = makeHat(o.hat);
   if (hatGroup) player.add(hatGroup);
   currentOutfit = o;
+  if (o.id === 'custom') customConfig = o;
   for (const el of dressItemsEl.children) el.classList.toggle('active', el.dataset.id === o.id);
   if (!silent) { beep(700, 0.08, 'sine', 0.05); ctx.flashMessage(`${o.icon} 换上了「${o.name}」！`); saveGame(); }
 }
@@ -104,7 +118,10 @@ function setMoney(v) {
   refreshShopAffordability();
 }
 function saveGame() {
-  localStorage.setItem(SAVE_KEY, JSON.stringify({ money, items: placedItems, outfit: currentOutfit?.id }));
+  localStorage.setItem(SAVE_KEY, JSON.stringify({
+    money, items: placedItems, outfit: currentOutfit?.id,
+    customSkin: customConfig, designs: customDesigns,
+  }));
 }
 
 // ---------- 游戏状态 / 上下文 ----------
@@ -174,18 +191,24 @@ const ghostMat = new THREE.MeshBasicMaterial({ color: 0x33ff66, transparent: tru
 const chipsEl = document.getElementById('shop-chips');
 document.querySelector('#shop h3').textContent = `🛒 家具商店（${CATALOG.length} 件）`;
 let shopFilter = '全部';
-const categories = ['全部', ...new Set(CATALOG.map(d => d.cat))];
-for (const cat of categories) {
-  const chip = document.createElement('button');
-  chip.className = 'chip' + (cat === '全部' ? ' active' : '');
-  chip.textContent = cat;
-  chip.addEventListener('click', () => {
-    shopFilter = cat;
-    for (const c of chipsEl.children) c.classList.toggle('active', c.textContent === cat);
-    renderShopItems();
-  });
-  chipsEl.appendChild(chip);
+function buildChips(preferFilter) {
+  const cats = ['全部', ...new Set(CATALOG.map(d => d.cat))];
+  shopFilter = preferFilter && cats.includes(preferFilter) ? preferFilter
+    : cats.includes(shopFilter) ? shopFilter : '全部';
+  chipsEl.innerHTML = '';
+  for (const cat of cats) {
+    const chip = document.createElement('button');
+    chip.className = 'chip' + (cat === shopFilter ? ' active' : '');
+    chip.textContent = cat;
+    chip.addEventListener('click', () => {
+      shopFilter = cat;
+      for (const c of chipsEl.children) c.classList.toggle('active', c.textContent === cat);
+      renderShopItems();
+    });
+    chipsEl.appendChild(chip);
+  }
 }
+buildChips();
 function renderShopItems() {
   shopItemsEl.innerHTML = '';
   for (const def of CATALOG.filter(d => shopFilter === '全部' || d.cat === shopFilter)) {
@@ -224,9 +247,92 @@ function toggleDress(force) {
   dressOpen = force ?? !dressOpen;
   dressEl.style.display = dressOpen ? 'block' : 'none';
   if (dressOpen) document.exitPointerLock();
-  lockTip.style.display = (!buyMode && !dressOpen && !pointerLocked) ? 'block' : 'none';
+  updateLockTip();
 }
 ctx.openDress = () => toggleDress(true);
+
+// ---------- 自定义外观 ----------
+const HAT_TYPES = [['none', '🚫 无帽子'], ['top', '🎩 礼帽'], ['tall', '🎩 高礼帽'], ['cap', '🧢 棒球帽'],
+  ['bucket', '👒 雨帽/渔夫帽'], ['helmet', '🪖 安全帽'], ['bandana', '🧣 头巾'], ['sailor', '⚓ 水手帽'],
+  ['safari', '🤠 探险帽'], ['wig', '👨‍🦳 假发'], ['nightcap', '😴 睡帽']];
+const csHatType = document.getElementById('cs-hat-type');
+for (const [v, label] of HAT_TYPES) {
+  const op = document.createElement('option');
+  op.value = v; op.textContent = label;
+  csHatType.appendChild(op);
+}
+document.getElementById('cs-apply').addEventListener('click', () => {
+  const val = id => parseInt(document.getElementById(id).value.slice(1), 16);
+  const ht = csHatType.value;
+  applyOutfit({
+    id: 'custom', icon: '🎨', name: '自定义装扮',
+    shirt: val('cs-shirt'), pants: val('cs-pants'),
+    skin: val('cs-skin'), hair: val('cs-hair'),
+    hat: ht === 'none' ? null : { type: ht, color: val('cs-hat-color') },
+  });
+});
+
+// ---------- 家具设计器 ----------
+const designEl = document.getElementById('design');
+let designOpen = false;
+const dsKind = document.getElementById('ds-kind');
+for (const [k, m] of Object.entries(CUSTOM_KINDS)) {
+  const op = document.createElement('option');
+  op.value = k; op.textContent = `${m.icon} ${m.label}`;
+  dsKind.appendChild(op);
+}
+const dsVal = id => document.getElementById(id);
+function calcDesignPrice() {
+  const base = CUSTOM_KINDS[dsKind.value]?.base ?? 100;
+  const v = parseFloat(dsVal('ds-w').value) * parseFloat(dsVal('ds-d').value) * parseFloat(dsVal('ds-h').value);
+  return Math.round((base + v * 220) / 10) * 10;
+}
+function refreshDesign() {
+  for (const k of ['w', 'd', 'h'])
+    dsVal(`ds-${k}-v`).textContent = parseFloat(dsVal(`ds-${k}`).value).toFixed(2) + 'm';
+  dsVal('ds-price').textContent = `预估价格：§${calcDesignPrice()}`;
+}
+for (const id of ['ds-kind', 'ds-w', 'ds-d', 'ds-h']) dsVal(id).addEventListener('input', refreshDesign);
+refreshDesign();
+function toggleDesign(force) {
+  designOpen = force ?? !designOpen;
+  designEl.style.display = designOpen ? 'block' : 'none';
+  if (designOpen) document.exitPointerLock();
+  updateLockTip();
+}
+function saveDesign() {
+  const kind = dsKind.value;
+  const meta = CUSTOM_KINDS[kind];
+  const d = {
+    id: `custom_${Date.now()}`, kind,
+    name: dsVal('ds-name').value.trim() || `我的${meta.label}`,
+    w: parseFloat(dsVal('ds-w').value),
+    d: parseFloat(dsVal('ds-d').value),
+    h: parseFloat(dsVal('ds-h').value),
+    c1: parseInt(dsVal('ds-c1').value.slice(1), 16),
+    c2: parseInt(dsVal('ds-c2').value.slice(1), 16),
+    price: calcDesignPrice(),
+  };
+  customDesigns.push(d);
+  const def = designToDef(d);
+  CATALOG.push(def);
+  buildChips('自定义');
+  renderShopItems();
+  document.querySelector('#shop h3').textContent = `🛒 家具商店（${CATALOG.length} 件）`;
+  saveGame();
+  return def;
+}
+dsVal('ds-save').addEventListener('click', () => {
+  const def = saveDesign();
+  ctx.flashMessage(`🎨 设计「${def.name}」已保存到商店「自定义」分类！`);
+  beep(880, 0.1, 'sine', 0.05);
+});
+dsVal('ds-place').addEventListener('click', () => {
+  const def = saveDesign();
+  toggleDesign(false);
+  startPlacement(def);
+});
+document.getElementById('open-design').addEventListener('click', () => toggleDesign(true));
 function refreshShopAffordability() {
   for (const el of shopItemsEl.children) {
     const def = CATALOG.find(d => d.id === el.dataset.id);
@@ -291,6 +397,9 @@ function registerItem(item, x, z, ry) {
   for (const it of item.interactables) room.interactables.push({ radius: 2.4, ...it });
   if (item.updater) updaters.add(item.updater);
 }
+function updateLockTip() {
+  lockTip.style.display = (!pointerLocked && !buyMode && !dressOpen && !designOpen) ? 'block' : 'none';
+}
 function toggleBuy() {
   buyMode = !buyMode;
   shopEl.style.display = buyMode ? 'block' : 'none';
@@ -299,7 +408,7 @@ function toggleBuy() {
   } else {
     cancelGhost();
   }
-  lockTip.style.display = (!buyMode && !pointerLocked) ? 'block' : 'none';
+  updateLockTip();
 }
 function loadGame() {
   try {
@@ -312,7 +421,11 @@ function loadGame() {
       registerItem(def.build(ctx), rec.x, rec.z, rec.ry);
       placedItems.push(rec);
     }
-    applyOutfit(outfits.find(o => o.id === s.outfit) ?? outfits[0], true);
+    if (s.customSkin) customConfig = s.customSkin;
+    const savedOutfit = s.outfit === 'custom' && customConfig
+      ? customConfig
+      : outfits.find(o => o.id === s.outfit);
+    applyOutfit(savedOutfit ?? outfits[0], true);
   } catch { /* 存档损坏则忽略 */ }
 }
 loadGame();
@@ -331,13 +444,15 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyE' && !buyMode) tryInteract();
   if (e.code === 'KeyB') toggleBuy();
   if (e.code === 'KeyG') toggleDress();
+  if (e.code === 'KeyC') toggleDesign();
   if (e.code === 'KeyR' && ghost) ghost.ry = (ghost.ry + Math.PI / 2) % (Math.PI * 2);
   if (e.code === 'Escape' && ghost) cancelGhost();
 });
 addEventListener('keyup', e => keys[e.code] = false);
 
 renderer.domElement.addEventListener('click', () => {
-  if (buyMode) { if (ghost) placeItem(); return; }
+  if (ghost) { placeItem(); return; }
+  if (buyMode) return;
   renderer.domElement.requestPointerLock();
 });
 renderer.domElement.addEventListener('contextmenu', e => {
@@ -347,7 +462,7 @@ renderer.domElement.addEventListener('contextmenu', e => {
 lockTip.addEventListener('click', () => renderer.domElement.requestPointerLock());
 document.addEventListener('pointerlockchange', () => {
   pointerLocked = document.pointerLockElement === renderer.domElement;
-  lockTip.style.display = (!pointerLocked && !buyMode && !dressOpen) ? 'block' : 'none';
+  updateLockTip();
 });
 addEventListener('mousemove', e => {
   if (pointerLocked) {
