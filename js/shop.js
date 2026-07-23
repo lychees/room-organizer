@@ -1561,7 +1561,7 @@ function buildPlant(ctx) { return gPlant({ kind: 'ball', leaf: 0x53b15a })(ctx);
 // ============================================================
 //  家具目录（131 件，14 个分类）
 // ============================================================
-function F(id, icon, name, price, cat, desc, build) { return { id, icon, name, price, cat, desc, build }; }
+function F(id, icon, name, price, cat, desc, build, opts) { return { id, icon, name, price, cat, desc, build, ...opts }; }
 
 export const CATALOG = [
   // ===== 桌椅 =====
@@ -2320,3 +2320,203 @@ export function customFurniture(design) {
     return result;
   };
 }
+
+// ============================================================
+//  种田系统 —— 作物与种植盆
+// ============================================================
+function basePlant(stage, leafColor) {
+  const g = new THREE.Group();
+  if (stage === 0) {
+    add(g, S(0.03, leafColor, 8), 0, 0.03, 0);
+  } else {
+    const h = 0.08 + stage * 0.05;
+    add(g, C(0.012, 0.015, h, 0x3f7a3f), 0, h / 2, 0);
+    const bush = new THREE.Mesh(new THREE.IcosahedronGeometry(0.05 + stage * 0.03, 1),
+      new THREE.MeshStandardMaterial({ color: leafColor, roughness: 1 }));
+    bush.castShadow = true;
+    add(g, bush, 0, h, 0);
+  }
+  return g;
+}
+export const CROPS = {
+  wheat: {
+    name: '小麦', icon: '🌾', reward: 35,
+    build(stage) {
+      const g = new THREE.Group();
+      const n = 2 + stage * 2;
+      const c = stage >= 3 ? 0xd8b04a : 0x7ab84a;
+      for (let i = 0; i < n; i++) {
+        const h = 0.1 + stage * 0.07;
+        add(g, C(0.008, 0.01, h, c, 6), (Math.random() - 0.5) * 0.12, h / 2, (Math.random() - 0.5) * 0.12);
+        if (stage >= 2) add(g, S(0.02, stage >= 3 ? 0xe0c060 : 0x9ac86a, 6), (Math.random() - 0.5) * 0.12, h, (Math.random() - 0.5) * 0.12);
+      }
+      return g;
+    },
+  },
+  carrot: {
+    name: '胡萝卜', icon: '🥕', reward: 50,
+    build(stage) {
+      const g = basePlant(stage, 0x53b15a);
+      if (stage >= 3) {
+        const root = add(g, C(0.05, 0.015, 0.14, 0xe07830, 10), 0, 0.0, 0);
+        root.rotation.x = Math.PI;
+      }
+      return g;
+    },
+  },
+  sunflower: {
+    name: '向日葵', icon: '🌻', reward: 60,
+    build(stage) {
+      const g = basePlant(stage, 0x53b15a);
+      if (stage >= 3) {
+        add(g, C(0.015, 0.02, 0.3, 0x3f7a3f), 0, 0.25, 0);
+        add(g, S(0.05, 0x6b4527, 10), 0, 0.42, 0);
+        for (let i = 0; i < 8; i++)
+          add(g, B(0.05, 0.01, 0.03, 0xffd54a), Math.cos(i * 0.785) * 0.07, 0.42, Math.sin(i * 0.785) * 0.07, -i * 0.785);
+      }
+      return g;
+    },
+  },
+  tomato: {
+    name: '番茄', icon: '🍅', reward: 75,
+    build(stage) {
+      const g = basePlant(stage, 0x4a9a4a);
+      if (stage >= 2) {
+        const n = stage >= 3 ? 3 : 1;
+        for (let i = 0; i < n; i++)
+          add(g, S(0.035, stage >= 3 ? 0xe04030 : 0x9ac86a, 10), Math.cos(i * 2.1) * 0.07, 0.1 + stage * 0.04 + (i % 2) * 0.05, Math.sin(i * 2.1) * 0.07);
+      }
+      return g;
+    },
+  },
+  strawberry: {
+    name: '草莓', icon: '🍓', reward: 100,
+    build(stage) {
+      const g = basePlant(stage, 0x53b15a);
+      if (stage >= 3)
+        for (let i = 0; i < 4; i++)
+          add(g, S(0.025, 0xe04050, 8), Math.cos(i * 1.6) * 0.08, 0.05 + (i % 2) * 0.05, Math.sin(i * 1.6) * 0.08);
+      return g;
+    },
+  },
+  pumpkin: {
+    name: '南瓜', icon: '🎃', reward: 130,
+    build(stage) {
+      const g = basePlant(stage, 0x4a8a3a);
+      if (stage >= 3) {
+        const p = add(g, S(0.11, 0xe07820, 14), 0.05, 0.07, 0.05);
+        p.scale.y = 0.75;
+        add(g, C(0.015, 0.02, 0.06, 0x3f7a3f), 0.05, 0.16, 0.05);
+      }
+      return g;
+    },
+  },
+};
+
+const FARM_STAGE_TIME = [10, 15, 25]; // 每阶段浇水后的生长秒数
+
+function gPlanter(o) {
+  return (ctx) => {
+    const g = new THREE.Group();
+    const n = o.slots;
+    const w = 0.3 + n * 0.35;
+    const box = add(g, B(w, 0.25, 0.5, o.color ?? 0x8a5f38), 0, 0.125, 0);
+    add(g, B(w - 0.08, 0.06, 0.42, 0x3a2a18), 0, 0.26, 0); // 土壤
+    const farm = { slots: [] };
+    for (let i = 0; i < n; i++)
+      farm.slots.push({ crop: null, stage: 0, timer: 0, watered: false, x: (i - (n - 1) / 2) * 0.35, mesh: null });
+
+    function rebuildSlot(s) {
+      if (s.mesh) { g.remove(s.mesh); s.mesh = null; }
+      if (!s.crop) return;
+      s.mesh = CROPS[s.crop].build(s.stage);
+      s.mesh.position.set(s.x, 0.29, 0);
+      g.add(s.mesh);
+    }
+    farm.rebuildAll = () => farm.slots.forEach(rebuildSlot);
+
+    function nextAction() {
+      let s = farm.slots.find(s => s.crop && s.stage >= 3);
+      if (s) return { s, kind: 'harvest' };
+      s = farm.slots.find(s => s.crop && !s.watered);
+      if (s) return { s, kind: 'water' };
+      s = farm.slots.find(s => !s.crop);
+      if (s) return { s, kind: 'plant' };
+      return null;
+    }
+
+    return {
+      group: g, foot: { w: w + 0.1, d: 0.6 }, farm,
+      updater(dt) {
+        for (const s of farm.slots) {
+          if (!s.crop || !s.watered || s.stage >= 3) continue;
+          s.timer += dt;
+          if (s.timer >= FARM_STAGE_TIME[s.stage]) {
+            s.timer = 0; s.stage++; s.watered = false;
+            rebuildSlot(s);
+            ctx.saveGame?.();
+            if (s.stage >= 3) {
+              const c = CROPS[s.crop];
+              ctx.flashMessage(`${c.icon} ${c.name}成熟了，快收获吧！`);
+              beep(880, 0.12, 'sine', 0.05);
+            }
+          }
+        }
+      },
+      interactables: [{
+        pos: g.position,
+        meshes: [box],
+        getPrompt: () => {
+          if (ctx.carrying || ctx.isSeated?.()) return null;
+          const a = nextAction();
+          if (!a) return '🌱 生长中……记得浇水';
+          if (a.kind === 'harvest') { const c = CROPS[a.s.crop]; return `按 <b>E</b> 收获${c.name} ${c.icon}`; }
+          if (a.kind === 'water') return '按 <b>E</b> 浇水 💧';
+          const sid = ctx.selectedSeedId?.();
+          if (!sid) return '按 <b>E</b> 播种（先去商店买种子）';
+          const c = CROPS[sid];
+          return `按 <b>E</b> 播种${c.name}（剩${ctx.seeds[sid]}）· <b>Q</b> 换种子`;
+        },
+        action: () => {
+          const a = nextAction();
+          if (!a) return;
+          if (a.kind === 'harvest') {
+            const c = CROPS[a.s.crop];
+            Object.assign(a.s, { crop: null, stage: 0, timer: 0, watered: false });
+            rebuildSlot(a.s);
+            ctx.earnMoney(c.reward, `${c.icon} 收获${c.name}！+§${c.reward}`);
+            beep(990, 0.1, 'sine', 0.06);
+          } else if (a.kind === 'water') {
+            a.s.watered = true;
+            ctx.flashMessage('💧 浇了水，土壤湿漉漉的');
+            beep(500, 0.08, 'sine', 0.04);
+          } else {
+            const sid = ctx.selectedSeedId?.();
+            if (!sid) { ctx.flashMessage('🌱 没有种子啦，去商店「农田」分类买一些吧！'); beep(180, 0.12); return; }
+            ctx.seeds[sid]--;
+            Object.assign(a.s, { crop: sid, stage: 0, timer: 0, watered: false });
+            rebuildSlot(a.s);
+            ctx.saveGame?.();
+            const c = CROPS[sid];
+            ctx.flashMessage(`${c.icon} 播下了${c.name}种子，记得浇水！`);
+            beep(660, 0.08, 'sine', 0.05);
+          }
+        },
+      }],
+    };
+  };
+}
+
+// 农田目录（两个主题都可用）
+const FARMING_DEFS = [
+  F('planter1', '🪴', '种植盆', 150, '农田', '1 个种植槽，阳台种菜入门', gPlanter({ slots: 1 })),
+  F('planter4', '🥬', '四槽菜圃', 350, '农田', '4 个种植槽，规模化种田', gPlanter({ slots: 4 })),
+  F('seed_wheat', '🌾', '小麦种子', 15, '农田', '种在种植盆里，收获 §35', null, { seed: 'wheat' }),
+  F('seed_carrot', '🥕', '胡萝卜种子', 20, '农田', '种在种植盆里，收获 §50', null, { seed: 'carrot' }),
+  F('seed_sunflower', '🌻', '向日葵种子', 25, '农田', '种在种植盆里，收获 §60', null, { seed: 'sunflower' }),
+  F('seed_tomato', '🍅', '番茄种子', 30, '农田', '种在种植盆里，收获 §75', null, { seed: 'tomato' }),
+  F('seed_strawberry', '🍓', '草莓种子', 40, '农田', '种在种植盆里，收获 §100', null, { seed: 'strawberry' }),
+  F('seed_pumpkin', '🎃', '南瓜种子', 50, '农田', '种在种植盆里，收获 §130', null, { seed: 'pumpkin' }),
+];
+CATALOG.push(...FARMING_DEFS);
+VICTORIAN_CATALOG.push(...FARMING_DEFS);

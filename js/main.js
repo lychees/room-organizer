@@ -1,7 +1,7 @@
 // 整理房间大作战 —— 主逻辑
 import * as THREE from 'three';
 import { buildRoom, makeBox } from './room.js';
-import { getCatalog, beep, customFurniture, CUSTOM_KINDS } from './shop.js';
+import { getCatalog, beep, customFurniture, CUSTOM_KINDS, CROPS } from './shop.js';
 import { getOutfits, makeHat } from './outfits.js';
 
 function init(theme) {
@@ -119,8 +119,16 @@ function setMoney(v) {
 }
 function saveGame() {
   localStorage.setItem(SAVE_KEY, JSON.stringify({
-    money, items: placedItems, outfit: currentOutfit?.id,
-    customSkin: customConfig, designs: customDesigns,
+    money,
+    items: placedItems.map(r => {
+      const o = { id: r.id, x: r.x, z: r.z, ry: r.ry };
+      if (r._farm) o.farm = r._farm.slots.map(s => s.crop ? { crop: s.crop, stage: s.stage, timer: s.timer, watered: s.watered } : null);
+      return o;
+    }),
+    outfit: currentOutfit?.id,
+    customSkin: customConfig,
+    designs: customDesigns,
+    seeds: ctx.seeds,
   }));
 }
 
@@ -175,6 +183,21 @@ const ctx = {
 
 const room = buildRoom(scene, ctx, theme);
 for (const u of room.updaters ?? []) updaters.add(u);
+
+// ---------- 种田系统 ----------
+const farms = []; // 所有已放置种植盆的 farm 状态（用于测试/调试）
+ctx.seeds = savedRaw?.seeds ?? {};
+let seedSel = 0;
+ctx.selectedSeedId = () => {
+  const avail = Object.keys(CROPS).filter(k => (ctx.seeds[k] ?? 0) > 0);
+  return avail.length ? avail[seedSel % avail.length] : null;
+};
+ctx.earnMoney = (v, msg) => {
+  setMoney(money + v);
+  if (msg) ctx.flashMessage(msg);
+  saveGame();
+};
+ctx.saveGame = () => saveGame();
 ctx.onProgress();
 
 // ---------- 坐下 / 躺下系统 ----------
@@ -241,6 +264,15 @@ function renderShopItems() {
       <div class="price">§${def.price}</div>`;
     el.addEventListener('click', () => {
       if (money < def.price) { ctx.flashMessage('💸 钱不够啦，先去整理房间赚钱吧！'); beep(180, 0.15); return; }
+      if (def.seed) { // 种子直接入库存
+        setMoney(money - def.price);
+        ctx.seeds[def.seed] = (ctx.seeds[def.seed] ?? 0) + 1;
+        saveGame();
+        const c = CROPS[def.seed];
+        ctx.flashMessage(`${c.icon} 购买了${c.name}种子（现有 ${ctx.seeds[def.seed]}）`);
+        beep(880, 0.08, 'sine', 0.05);
+        return;
+      }
       startPlacement(def);
     });
     shopItemsEl.appendChild(el);
@@ -404,7 +436,9 @@ function placeItem() {
   setMoney(money - def.price);
   const item = def.build(ctx);
   registerItem(item, x, z, ry);
-  placedItems.push({ id: def.id, x, z, ry });
+  const rec = { id: def.id, x, z, ry };
+  if (item.farm) rec._farm = item.farm;
+  placedItems.push(rec);
   saveGame();
   ctx.flashMessage(`${def.icon} 购买了${def.name}！-§${def.price}`);
   beep(880, 0.08, 'sine', 0.06); setTimeout(() => beep(1320, 0.12, 'sine', 0.05), 90);
@@ -419,6 +453,8 @@ function registerItem(item, x, z, ry) {
   }
   for (const it of item.interactables) room.interactables.push({ radius: 2.4, ...it });
   if (item.updater) updaters.add(item.updater);
+  if (item.farm) farms.push(item.farm);
+  return item;
 }
 function updateLockTip() {
   lockTip.style.display = (!pointerLocked && !buyMode && !dressOpen && !designOpen) ? 'block' : 'none';
@@ -441,8 +477,14 @@ function loadGame() {
     setMoney(typeof s.money === 'number' ? s.money : 3000);
     for (const rec of s.items ?? []) {
       const def = CATALOG.find(d => d.id === rec.id);
-      if (!def) continue;
-      registerItem(def.build(ctx), rec.x, rec.z, rec.ry);
+      if (!def || !def.build) continue;
+      const item = def.build(ctx);
+      registerItem(item, rec.x, rec.z, rec.ry);
+      if (rec.farm && item.farm) {
+        rec.farm.forEach((fs, i) => { if (fs && item.farm.slots[i]) Object.assign(item.farm.slots[i], fs); });
+        item.farm.rebuildAll();
+        rec._farm = item.farm;
+      }
       placedItems.push(rec);
     }
     if (s.customSkin) customConfig = s.customSkin;
@@ -469,6 +511,15 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyB') toggleBuy();
   if (e.code === 'KeyG') toggleDress();
   if (e.code === 'KeyC') toggleDesign();
+  if (e.code === 'KeyQ') { // 切换种子
+    seedSel++;
+    const sid = ctx.selectedSeedId();
+    if (sid) {
+      const c = CROPS[sid];
+      ctx.flashMessage(`🌱 当前种子：${c.icon} ${c.name} ×${ctx.seeds[sid]}`);
+      beep(600, 0.05, 'sine', 0.03);
+    }
+  }
   if (e.code === 'KeyR' && ghost) ghost.ry = (ghost.ry + Math.PI / 2) % (Math.PI * 2);
   if (e.code === 'Escape' && ghost) cancelGhost();
 });
@@ -694,7 +745,7 @@ function animate() {
 animate();
 
 // 调试/测试钩子
-window.__game = { player, room, catalog: CATALOG, camera, parts, get outfit() { return currentOutfit?.id; }, get seat() { return seat; } };
+window.__game = { player, room, catalog: CATALOG, camera, parts, farms, get outfit() { return currentOutfit?.id; }, get seat() { return seat; } };
 } // end init()
 
 // ---------- 开局模式选择 ----------
